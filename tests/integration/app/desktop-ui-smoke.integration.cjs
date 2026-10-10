@@ -521,7 +521,10 @@ const main = async () => {
           cancelCollection: async () => collection,
           openDataFolder: async () => {},
           openLatestExport: async () => {},
-          openConfigFolder: async () => {},
+          openConfigFolder: async () => {
+            window.__openConfigFolderCalls =
+              (window.__openConfigFolderCalls ?? 0) + 1;
+          },
           openDesktopAcceptedEvidence: async (input) => {
             window.__openedAcceptedEvidence = input;
           },
@@ -655,6 +658,19 @@ const main = async () => {
                 source_cards: cards.map(
                   (card) =>
                     (
+                      card.source_id === 'google-search-console-query'
+                      && window.__gscQueryBlocked
+                    )
+                      ? {
+                          ...card,
+                          readiness_status: 'CONFIGURATION_REQUIRED',
+                          readiness_reason: 'Google Search Console setup is required.',
+                          readiness_remediation: {
+                            kind: 'CONNECT_SOURCE',
+                            label: 'Configure Google Search Console',
+                          },
+                        }
+                      : (
                       card.source_id
                         === 'google-search-console-query-page'
                       || card.source_id
@@ -4521,6 +4537,7 @@ const main = async () => {
     const gscQueryTaskCard = page.getByTestId('task-card')
       .filter({ hasText: 'GSC — Queries Current + Previous 28 Days' });
     assert.equal(await gscQueryTaskCard.count(), 1, 'The two-window GSC task must be discoverable');
+    await gscQueryTaskCard.getByText('READY', { exact: true }).waitFor();
     await gscQueryTaskCard.click();
     await page.getByRole('button', { name: 'Review Quick Run', exact: true }).click();
     assert.deepEqual(
@@ -6534,6 +6551,37 @@ const main = async () => {
       'Workspace changes must clear transient preset drafts instead of leaking them across Workspaces.',
     );
     console.log('PASS PRESET-LIFECYCLE-UI-001: create, open, edit, rename, duplicate, review, run, and confirmed delete are usable');
+
+    await page.addInitScript(() => {
+      window.__gscQueryBlocked = true;
+    });
+    await page.reload();
+    await page.getByRole('button', { name: 'TASKS', exact: true }).click();
+    const blockedGscTask = page.getByTestId('task-card')
+      .filter({ hasText: 'GSC — Queries Current + Previous 28 Days' });
+    await blockedGscTask.getByText('CONFIGURATION REQUIRED', { exact: true }).waitFor();
+    await blockedGscTask.click();
+    const blockedGscReview = page.getByRole(
+      'button',
+      { name: 'Review Quick Run', exact: true },
+    );
+    assert.equal(await blockedGscReview.isEnabled(), false);
+    await page.getByRole(
+      'button',
+      { name: 'Configure Google Search Console', exact: true },
+    ).click();
+    await page.getByTestId('workspace-connections').waitFor();
+    assert.equal(
+      await page.getByTestId('workspace-connection-google-search-console-query-page').count(),
+      1,
+      'GSC remediation must expose the authorized Search Console Workspace connection.',
+    );
+    assert.equal(
+      await page.evaluate(() => window.__openConfigFolderCalls ?? 0),
+      0,
+      'GSC remediation must not open the unrelated provider configuration folder.',
+    );
+    console.log('PASS GSC-QUICK-RUN-BLOCKED-UI-001: blocked GSC Quick Run offers Workspace connection remediation');
 
     console.log(
       'PASS DESKTOP-UI-001: source-neutral operations shell and reviewed GSC + Google Trends Quick Run flows are verified',

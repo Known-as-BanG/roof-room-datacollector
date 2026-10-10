@@ -65,6 +65,11 @@ const main = async () => {
   assert.deepEqual(await service.getStatus(), {
     oauth_application_status: 'NOT_CONFIGURED',
   });
+  assert.equal(
+    await service.isReadyForSource('google-search-console-query-page'),
+    false,
+    'A missing OAuth application must not satisfy GSC readiness.',
+  );
 
   const oauthResult = await service.configure({
     component: 'OAUTH_APPLICATION',

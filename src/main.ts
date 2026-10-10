@@ -72,6 +72,10 @@ import {
 import {
   evaluateGoogleAnalytics4Readiness,
 } from './main/sources/google-analytics-4/google-analytics-4-readiness';
+import {
+  googleSearchConsoleReadiness,
+  resolveGoogleApiReadinessSourceId,
+} from './main/sources/google-api/google-api-readiness';
 import type { GoogleProviderConfigurationService } from './main/sources/google-api/google-provider-configuration';
 import {
   createElectronSerpApiCredentialAcquirer,
@@ -1026,11 +1030,20 @@ const initializeBootstrapStatus =
         );
         readinessRegistry.register(
           sourceId,
-          ({
-            connection,
-            credential_available,
-            source_config,
-          }) => {
+          (context) => {
+            if (
+              sourceId === 'google-search-console-query'
+              || sourceId === 'google-search-console-query-page'
+            ) {
+              return googleSearchConsoleReadiness(context);
+            }
+
+            const {
+              connection,
+              credential_available,
+              source_config,
+            } = context;
+
             if (
               sourceId === 'ikas-products'
               || sourceId === 'google-keyword-planner-csv'
@@ -1122,20 +1135,23 @@ const initializeBootstrapStatus =
               source_id,
               source_config,
             ) => {
+              const readinessSourceId =
+                resolveGoogleApiReadinessSourceId(source_id);
               const readiness = await readinessRegistry.getReadiness(
                 workspace_id,
-                source_id,
+                readinessSourceId,
                 source_config,
               );
               if (
                 (DESKTOP_GOOGLE_CONNECTION_SOURCE_IDS as readonly string[])
-                  .includes(source_id)
+                  .includes(readinessSourceId)
                 && !await providerConfigurationService.isReadyForSource(
-                  source_id as DesktopGoogleConnectionSourceId,
+                  readinessSourceId as DesktopGoogleConnectionSourceId,
                 )
               ) {
                 return {
                   ...readiness,
+                  source_id,
                   readiness_status: 'CONFIGURATION_REQUIRED',
                 };
               }
@@ -1170,7 +1186,10 @@ const initializeBootstrapStatus =
                 };
               }
 
-              return readiness;
+              return {
+                ...readiness,
+                source_id,
+              };
             },
           },
 

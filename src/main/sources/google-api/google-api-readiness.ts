@@ -1,4 +1,14 @@
 import type { SourceReadinessEvaluator } from '../../core/readiness-registry';
+import {
+  GSC_QUERY_PAGE_SOURCE_ID,
+  GSC_QUERY_SOURCE_ID,
+} from '../../../shared/google-api';
+
+export const resolveGoogleApiReadinessSourceId = (
+  sourceId: string,
+): string => sourceId === GSC_QUERY_SOURCE_ID
+  ? GSC_QUERY_PAGE_SOURCE_ID
+  : sourceId;
 
 export const googleApiReadinessEvaluator: SourceReadinessEvaluator = ({ connection, credential_available }) => {
   if (!connection) return 'CONFIGURATION_REQUIRED';

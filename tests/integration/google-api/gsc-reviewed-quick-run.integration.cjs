@@ -67,6 +67,56 @@ test('GSC-TASK-CATALOG-001: desktop catalog exposes the new 28-day GSC tasks', (
   );
 });
 
+test('GSC-QUERY-READINESS-001: blocked Query Quick Run points to the Search Console Workspace setup', async (t) => {
+  const root = path.join(workRoot, 'query-readiness');
+  const directories = Object.fromEntries(
+    ['config', 'data', 'database', 'browser_profiles', 'logs', 'public_downloads']
+      .map((key) => [key, path.join(root, key)]),
+  );
+  directories.app_data_root = root;
+  directories.runs = path.join(directories.data, 'runs');
+  for (const directory of Object.values(directories)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+  assert.equal(initializeDatabase(directories).status, 'READY');
+
+  const repository = new StateRepository(getDatabasePath(directories));
+  t.after(() => repository.close());
+  const workspace = repository.createWorkspace({
+    workspace_name: 'GSC blocked readiness test',
+  });
+  const controller = new DesktopMultiSourceController({
+    repository,
+    application_version: 'test',
+    readiness: {
+      getReadiness: async (_workspaceId, sourceId) => ({
+        readiness_status:
+          sourceId === QUERY_SOURCE
+            ? 'CONFIGURATION_REQUIRED'
+            : 'READY',
+      }),
+    },
+  });
+
+  const draft = await controller.createDraft({
+    workspace_id: workspace.workspace_id,
+    origin: { kind: 'BLANK' },
+  });
+  const queryCard = draft.source_cards.find(
+    (card) => card.source_id === QUERY_SOURCE,
+  );
+  assert.ok(queryCard);
+  assert.equal(queryCard.readiness_status, 'CONFIGURATION_REQUIRED');
+  assert.equal(
+    queryCard.readiness_remediation.kind,
+    'CONNECT_SOURCE',
+  );
+  assert.equal(
+    queryCard.readiness_remediation.label,
+    'Configure Google Search Console',
+  );
+});
+
 test('GSC-DATE-28-001: current 28 days resolves to exactly 28 complete days ending yesterday', () => {
   const range = resolveDesktopDatePolicy(
     'TODAY_MINUS_28_TO_YESTERDAY',

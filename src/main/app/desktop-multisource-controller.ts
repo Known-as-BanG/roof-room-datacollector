@@ -3859,6 +3859,20 @@ export class DesktopMultiSourceController {
     }
 
     if (readinessStatus === 'CONFIGURATION_REQUIRED') {
+      if (
+        sourceId === 'google-search-console-query'
+        || sourceId === 'google-search-console-query-page'
+      ) {
+        return {
+          readiness_reason:
+            'Configure the Google Search Console Workspace connection and OAuth application before reviewing this task.',
+          readiness_remediation: {
+            kind: 'CONNECT_SOURCE',
+            label: 'Configure Google Search Console',
+          },
+        };
+      }
+
       return {
         readiness_reason:
           'Source configuration is required before this task can be reviewed.',

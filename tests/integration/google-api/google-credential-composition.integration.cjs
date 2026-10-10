@@ -26,12 +26,14 @@ const {
 } = require(path.join(buildRoot, 'main/sources/google-api/google-api-runtime.js'));
 const {
   googleSearchConsoleReadiness,
+  resolveGoogleApiReadinessSourceId,
 } = require(path.join(buildRoot, 'main/sources/google-api/google-api-readiness.js'));
 const {
   createFetchApiRequester,
 } = require(path.join(buildRoot, 'main/sources/google-api/api-helpers.js'));
 const {
   GSC_QUERY_PAGE_SOURCE_ID,
+  GSC_QUERY_SOURCE_ID,
   GOOGLE_ADS_SEARCH_TERMS_SOURCE_ID,
   GOOGLE_KEYWORD_PLANNER_SOURCE_ID,
 } = require(path.join(buildRoot, 'shared/google-api.js'));
@@ -425,10 +427,56 @@ const encryption = {
   assert.equal(googleSearchConsoleReadiness({
     connection: {
       ...gscConnection,
+      credential_ref: null,
+    },
+    credential_available: false,
+  }), 'CONNECTION_REQUIRED', 'A missing GSC credential reference must not be ready.');
+  assert.equal(googleSearchConsoleReadiness({
+    connection: {
+      ...gscConnection,
       safe_metadata: { authorization_state: 'REAUTHORIZATION_REQUIRED' },
     },
     credential_available: true,
   }), 'MANUAL_ACTION_REQUIRED');
+  assert.equal(googleSearchConsoleReadiness({
+    connection: {
+      ...gscConnection,
+      safe_metadata: {},
+    },
+    credential_available: true,
+  }), 'CONFIGURATION_REQUIRED', 'GSC readiness requires the configured site URL.');
+  assert.equal(googleSearchConsoleReadiness({
+    connection: gscConnection,
+    credential_available: false,
+  }), 'CONNECTION_REQUIRED', 'An unavailable GSC credential must not be ready.');
+
+  const queryReadinessSourceId =
+    resolveGoogleApiReadinessSourceId(GSC_QUERY_SOURCE_ID);
+  assert.equal(queryReadinessSourceId, GSC_QUERY_PAGE_SOURCE_ID);
+  assert.equal(
+    resolveGoogleApiReadinessSourceId(GSC_QUERY_PAGE_SOURCE_ID),
+    GSC_QUERY_PAGE_SOURCE_ID,
+    'Query × Page must retain its authorized Workspace connection identity.',
+  );
+  const gscConnections = new Map([
+    [GSC_QUERY_PAGE_SOURCE_ID, gscConnection],
+  ]);
+  const queryConnection = gscConnections.get(queryReadinessSourceId);
+  assert.ok(queryConnection);
+  assert.equal(googleSearchConsoleReadiness({
+    connection: queryConnection,
+    credential_available: true,
+  }), 'READY', 'The Query source must evaluate the existing Search Console connection.');
+  assert.equal(googleSearchConsoleReadiness({
+    connection: gscConnections.get(
+      resolveGoogleApiReadinessSourceId(GSC_QUERY_PAGE_SOURCE_ID),
+    ),
+    credential_available: true,
+  }), 'READY', 'Query × Page must evaluate that same Search Console connection.');
+  assert.equal(googleSearchConsoleReadiness({
+    connection: null,
+    credential_available: false,
+  }), 'CONFIGURATION_REQUIRED', 'A missing Search Console connection must remain blocked.');
 
   const expiredRuntime = new GoogleApiRuntimeFactory(
     repository,
