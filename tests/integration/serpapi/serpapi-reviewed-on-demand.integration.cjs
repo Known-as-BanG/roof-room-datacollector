@@ -61,7 +61,7 @@ test('SERPAPI-REVIEW-CORE-001: explicit reviewed queries persist and bind one pr
     now: () => clock,
     readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) },
   });
-  const draft = controller.createDraft({
+  const draft = await controller.createDraft({
     workspace_id: workspace.workspace_id,
     origin: { kind: 'BLANK' },
   });

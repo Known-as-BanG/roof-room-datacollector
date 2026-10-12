@@ -203,7 +203,7 @@ test('FRESHNESS-DESKTOP-001: desktop cards expose freshness separately and DUE d
     freshness,
   });
 
-  const draft = controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
+  const draft = await controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
   assert.deepEqual(draft.source_cards.map((card) => [card.source_id, card.freshness_status]), [
     ['google-search-console-query-page', 'UNKNOWN'],
     ['ikas-products', 'IMPORT_NEEDED'],

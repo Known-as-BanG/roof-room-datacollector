@@ -9,7 +9,7 @@ const {
   createAdsOptimizationPackDesktopComposition,
 } = require(path.join(buildRoot, 'main/app/ads-optimization-pack-desktop-composition.js'));
 const {
-  ADS_OPTIMIZATION_PACK_V1_RECIPE,
+  ADS_OPTIMIZATION_PACK_V2_RECIPE,
 } = require(path.join(buildRoot, 'main/task-packages/ads-optimization-pack-recipe.js'));
 
 const CURRENT_WINDOW = { start: '2026-09-23', end: '2026-09-29' };
@@ -93,7 +93,7 @@ const installAcceptedEvidence = () => {
     selected_sources: ['google-ads-search-reporting'], requested_configuration: null,
     configuration_snapshot: {},
   };
-  const jobs = ADS_OPTIMIZATION_PACK_V1_RECIPE.required_evidence.map((requirement, index) => {
+  const jobs = ADS_OPTIMIZATION_PACK_V2_RECIPE.required_evidence.map((requirement, index) => {
     const jobId = `job_accepted_${index}`;
     const artifactId = `artifact_accepted_${index}`;
     state.artifacts.set(artifactId, {
@@ -119,7 +119,7 @@ const installAcceptedEvidence = () => {
         resource_mode: requirement.resource_mode,
         campaign_type: 'SEARCH', customer_id: '1234567890',
         requested_date_start: CURRENT_WINDOW.start, requested_date_end: CURRENT_WINDOW.end,
-        dataset_schema_version: 1,
+        dataset_schema_version: requirement.dataset_schema_version,
       },
       job_order: index, execution_status: 'COMPLETED', validation_status: 'NO_DATA',
       attempt_count: 1, accepted_artifact_id: artifactId,

@@ -234,7 +234,7 @@ test('KEYWORD-PLANNER-CSV-CORE-001: Review locks FILE_IMPORT provenance and Core
     now: () => new Date('2026-09-18T10:00:00.000Z'),
     readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) },
   });
-  const draft = controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
+  const draft = await controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
   draft.reusable_configuration = {
     sources: {
       [SOURCE]: {

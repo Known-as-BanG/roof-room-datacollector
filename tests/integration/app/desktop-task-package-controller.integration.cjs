@@ -12,7 +12,7 @@ const {
   createAdsOptimizationPackDesktopDefinition,
 } = require(path.join(buildRoot, 'main/app/ads-optimization-pack-desktop-composition.js'));
 const {
-  ADS_OPTIMIZATION_PACK_V1_RECIPE,
+  ADS_OPTIMIZATION_PACK_V2_RECIPE,
 } = require(path.join(buildRoot, 'main/task-packages/ads-optimization-pack-recipe.js'));
 const {
   TaskPackageAssembler,
@@ -79,7 +79,7 @@ const priorManifest = (packageId = 'pkg_previous') => ({
   manifest_version: 1,
   package_id: packageId,
   recipe_id: 'ADS_OPTIMIZATION_PACK',
-  recipe_version: 1,
+  recipe_version: 2,
   recipe_label: 'Kampanya Gelişim',
   package_kind: 'INITIAL_BASELINE',
   workspace_id: 'ws_a',
@@ -89,9 +89,9 @@ const priorManifest = (packageId = 'pkg_previous') => ({
   application_version: '1.0.0',
   campaign_scope: 'SEARCH',
   current_window: { start: '2026-09-08', end: '2026-09-14' },
-  dataset_schema_version: 1,
-  required_datasets: ADS_OPTIMIZATION_PACK_V1_RECIPE.required_evidence.map(({ requirement_id }) => requirement_id),
-  evidence: ADS_OPTIMIZATION_PACK_V1_RECIPE.required_evidence.map((requirement) => ({
+  dataset_schema_version: 2,
+  required_datasets: ADS_OPTIMIZATION_PACK_V2_RECIPE.required_evidence.map(({ requirement_id }) => requirement_id),
+  evidence: ADS_OPTIMIZATION_PACK_V2_RECIPE.required_evidence.map((requirement) => ({
     ...readyResolution(requirement).evidence,
     window: { start: '2026-09-08', end: '2026-09-14' },
     table: {
@@ -119,7 +119,7 @@ const activeRun = {
   configuration_snapshot: {
     task_package: {
       recipe_id: 'ADS_OPTIMIZATION_PACK',
-      recipe_version: 1,
+      recipe_version: 2,
       workspace_id: 'ws_a',
       account_identity: clone(ACCOUNT),
       current_window: clone(CURRENT_WINDOW),
@@ -148,7 +148,7 @@ const realTemporalResolutions = async () => {
   const artifacts = new Map();
   const datasets = new Map();
   for (const fixture of fixtures) {
-    const requirement = ADS_OPTIMIZATION_PACK_V1_RECIPE.required_evidence[fixture.index];
+    const requirement = ADS_OPTIMIZATION_PACK_V2_RECIPE.required_evidence[fixture.index];
     const run = runs[fixture.index];
     const jobId = `job_evidence_${fixture.index}`;
     const artifactId = `artifact_evidence_${fixture.index}`;
@@ -166,7 +166,7 @@ const realTemporalResolutions = async () => {
         customer_id: ACCOUNT.value,
         requested_date_start: fixture.start,
         requested_date_end: fixture.end,
-        dataset_schema_version: 1,
+        dataset_schema_version: 2,
       },
       job_order: 0,
       execution_status: 'COMPLETED',
@@ -208,7 +208,7 @@ const realTemporalResolutions = async () => {
     loadAcceptedJobDataset: async (_runId, jobId) => clone(datasets.get(jobId)),
   });
   return resolver.resolveCurrent({
-    recipe: ADS_OPTIMIZATION_PACK_V1_RECIPE,
+    recipe: ADS_OPTIMIZATION_PACK_V2_RECIPE,
     workspace_id: 'ws_a',
     account_identity: ACCOUNT,
     current_window: CURRENT_WINDOW,
@@ -228,10 +228,10 @@ const createHarness = ({
     readiness: 0, assemble: 0, scan: 0, publish: 0, reserve: 0, execute: 0, getState: 0,
     reservedInput: null, publishedPackage: null,
   };
-  const resolved = resolutions || ADS_OPTIMIZATION_PACK_V1_RECIPE.required_evidence.map(readyResolution);
+  const resolved = resolutions || ADS_OPTIMIZATION_PACK_V2_RECIPE.required_evidence.map(readyResolution);
   const tables = new Map();
   for (const manifest of manifests) {
-    for (const requirement of ADS_OPTIMIZATION_PACK_V1_RECIPE.required_evidence) {
+    for (const requirement of ADS_OPTIMIZATION_PACK_V2_RECIPE.required_evidence) {
       tables.set(`${manifest.package_id}:${requirement.dataset_type}`, [{
         performance_date: manifest.current_window.start,
         clicks: 0,
@@ -322,7 +322,7 @@ const createHarness = ({
 const startIntent = (overrides = {}) => ({
   workspace_id: 'ws_a',
   recipe_id: 'ADS_OPTIMIZATION_PACK',
-  recipe_version: 1,
+  recipe_version: 2,
   reference_date: REFERENCE_DATE,
   current_window: clone(CURRENT_WINDOW),
   account_identity: clone(ACCOUNT),
@@ -459,7 +459,7 @@ async function main() {
   assert.equal(duplicateStartHarness.calls.reserve, 0);
 
   for (const stale of [
-    startIntent({ recipe_version: 2 }),
+    startIntent({ recipe_version: 1 }),
     startIntent({ reference_date: '2026-09-29' }),
     startIntent({ current_window: { start: '2026-09-22', end: '2026-09-28' } }),
     startIntent({ account_identity: { field: 'customer_id', value: '9999999999' } }),
@@ -496,7 +496,7 @@ async function main() {
   await firstStart;
   assert.equal(raceHarness.calls.publish, 1);
 
-  const twoMissing = ADS_OPTIMIZATION_PACK_V1_RECIPE.required_evidence.map((requirement, index) => (
+  const twoMissing = ADS_OPTIMIZATION_PACK_V2_RECIPE.required_evidence.map((requirement, index) => (
     index < 4 ? readyResolution(requirement) : missingResolution(requirement)
   ));
   const collectionHarness = createHarness({ resolutions: twoMissing });
@@ -517,7 +517,7 @@ async function main() {
     assert.equal(plan.source_context.customer_id, ACCOUNT.value);
     assert.equal(plan.source_context.requested_date_start, CURRENT_WINDOW.start);
     assert.equal(plan.source_context.requested_date_end, CURRENT_WINDOW.end);
-    assert.equal(plan.source_context.dataset_schema_version, 1);
+    assert.equal(plan.source_context.dataset_schema_version, 2);
   }
   assert.equal(typeof collectionHarness.controller.retry, 'undefined');
 

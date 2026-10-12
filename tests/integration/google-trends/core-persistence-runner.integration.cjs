@@ -975,7 +975,7 @@ const main = async () => {
         });
 
       const draft =
-        controller.createDraft({
+        await controller.createDraft({
           workspace_id:
             workspace.workspace_id,
           origin: {
@@ -1315,7 +1315,7 @@ const main = async () => {
         });
 
       const draft =
-        controller.createDraft({
+        await controller.createDraft({
           workspace_id:
             workspace.workspace_id,
           origin: {
@@ -1696,7 +1696,7 @@ const main = async () => {
         });
 
       const draft =
-        controller.createDraft({
+        await controller.createDraft({
           workspace_id:
             workspace.workspace_id,
           origin: {

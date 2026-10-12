@@ -458,6 +458,11 @@ const encryption = {
     GSC_QUERY_PAGE_SOURCE_ID,
     'Query × Page must retain its authorized Workspace connection identity.',
   );
+  assert.equal(
+    resolveGoogleApiReadinessSourceId('google-ads-configuration'),
+    GOOGLE_ADS_SEARCH_TERMS_SOURCE_ID,
+    'Google Ads configuration Review must use its canonical Workspace connection.',
+  );
   const gscConnections = new Map([
     [GSC_QUERY_PAGE_SOURCE_ID, gscConnection],
   ]);

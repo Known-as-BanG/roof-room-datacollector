@@ -132,7 +132,7 @@ export const collectGoogleAnalytics4Raw = async (
 
   let offset = 0;
 
-  while (true) {
+  for (;;) {
     const response = await requester({
       url:
         `https://analyticsdata.googleapis.com/v1beta/properties/`
