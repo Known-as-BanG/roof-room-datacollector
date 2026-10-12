@@ -983,7 +983,7 @@ export const generateGoogleTrendsExport =
           .toISOString()
           .slice(0, 10);
       const basename =
-        `ROOFROOM_SEARCH_DEMAND_RAW_${date}`;
+        `ROOFROOM_SEARCH_DEMAND_RAW_${date}_${run.run_id}`;
       const exportDirectory =
         path.resolve(
           storage.exports,

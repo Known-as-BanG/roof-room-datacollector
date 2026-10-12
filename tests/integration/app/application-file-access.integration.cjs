@@ -358,6 +358,12 @@ const main = async () => {
     latestWorkbook,
   );
 
+  const runNamedWorkbook = await makeWorkbook(
+    'rr_20260820T100000000Z_newer',
+    'ROOFROOM_SEARCH_DEMAND_RAW_2026-08-20_rr_20260820T100000000Z_newer.xlsx',
+  );
+  assert.equal(await findLatestExportWorkbook(directories), runNamedWorkbook);
+
   const initialWorkbook = await makeTaskPackage('pkg_initial');
   assert.equal(
     await resolveTaskPackageWorkbook(path.join(directories.data, 'packages'), 'pkg_initial'),

@@ -336,7 +336,7 @@ const main = async () => {
     path.basename(
       exported.workbook_path,
     ),
-    'ROOFROOM_SEARCH_DEMAND_RAW_2026-08-19.xlsx',
+    `ROOFROOM_SEARCH_DEMAND_RAW_2026-08-19_${collected.run.run_id}.xlsx`,
   );
   assert.deepEqual(
     fs.readdirSync(
@@ -514,6 +514,28 @@ const main = async () => {
   console.log(
     'PASS EXPORT-006: repeated export refuses to overwrite an existing derived package or workbook',
   );
+
+  const secondRun = await runGoogleTrendsBatchThroughCore({
+    directories,
+    workspace_id: MIGRATION_COMPATIBILITY_WORKSPACE_ID,
+    query_config: queryConfig,
+    requested_configuration: requestedConfiguration,
+    application_version: '1.0.0-test',
+    source: new ExportFixtureSource(),
+    validator,
+    logger: null,
+  });
+  const secondExport = await generateGoogleTrendsExport({
+    directories,
+    run_id: secondRun.run.run_id,
+    now: () => new Date('2026-08-19T12:00:00.000Z'),
+  });
+  assert.notEqual(secondRun.run.run_id, collected.run.run_id);
+  assert.notEqual(path.basename(secondExport.workbook_path), path.basename(exported.workbook_path));
+  assert.equal(path.basename(secondExport.workbook_path),
+    `ROOFROOM_SEARCH_DEMAND_RAW_2026-08-19_${secondRun.run.run_id}.xlsx`);
+  assert.equal(fs.existsSync(path.join(secondExport.export_directory, 'GT_24M_RAW.csv')), true);
+  assert.equal(fs.existsSync(exported.workbook_path), true);
 };
 
 main().catch((error) => {

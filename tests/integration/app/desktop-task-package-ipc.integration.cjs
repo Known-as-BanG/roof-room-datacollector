@@ -16,14 +16,14 @@ require(path.join(buildRoot, 'preload.js'));
 const intent = { workspace_id: 'ws_a', recipe_id: 'ADS_OPTIMIZATION_PACK' };
 const startIntent = {
   ...intent,
-  recipe_version: 1,
+  recipe_version: 2,
   reference_date: '2026-09-30',
   current_window: { start: '2026-09-23', end: '2026-09-29' },
   account_identity: { field: 'customer_id', value: '1234567890' },
 };
 const review = {
   recipe_id: 'ADS_OPTIMIZATION_PACK',
-  recipe_version: 1,
+  recipe_version: 2,
   recipe_label: 'Kampanya Gelişim',
   workspace_id: 'ws_a',
   account_identity: { field: 'customer_id', value: '1234567890' },
@@ -159,7 +159,7 @@ async function main() {
   }
   const invalidStartPayloads = [
     null,
-    { ...startIntent, recipe_version: 2 },
+    { ...startIntent, recipe_version: 1 },
     { ...startIntent, reference_date: '09/30/2026' },
     { ...startIntent, current_window: { start: '2026-09-23', end: 'bad' } },
     { ...startIntent, account_identity: { field: 'customer_id', value: '' } },

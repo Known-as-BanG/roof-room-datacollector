@@ -2569,7 +2569,9 @@ export function DesktopMultiSourceView() {
         recipe_id: task.recipe_id,
       });
       if (response.ok === false) {
-        setMessage(formatStatus(response.error.code));
+        setMessage(response.error.code === 'LOCAL_REVIEW_FAILED'
+          ? 'Package Review could not be completed due to an application error. Try again; if it persists, report the issue.'
+          : formatStatus(response.error.code));
         return;
       }
       setPublishedTaskPackage(null);
@@ -3993,6 +3995,7 @@ export function DesktopMultiSourceView() {
     nextView: View,
   ) => {
     if (!confirmDiscardTransientEdits()) return;
+    setMessage(null);
     homePresetReviewRequestId.current += 1;
     setHomePresetReview(null);
     if (hasTransientEdits) {
@@ -5304,6 +5307,18 @@ export function DesktopMultiSourceView() {
                   </section>
                 )}
 
+                {selectedTask.source_id === 'google-analytics-4' && (() => {
+                  const source = (quickRunReview.review.reviewed_draft?.resolved_configuration.sources as JsonObject | undefined)?.['google-analytics-4'] as JsonObject | undefined;
+                  if (typeof source?.start_date !== 'string' || typeof source.end_date !== 'string') return null;
+                  return (
+                    <section className="rr-panel rr-detail-panel">
+                      <h2>GA4 Date Range</h2>
+                      <p>Start date: {source.start_date}</p>
+                      <p>End date: {source.end_date}</p>
+                    </section>
+                  );
+                })()}
+
                 {selectedTask.task_id === 'gsc-query-current-previous-28-days' && (() => {
                   const source = (quickRunReview.review.reviewed_draft?.resolved_configuration.sources as JsonObject | undefined)?.['google-search-console-query'] as JsonObject | undefined;
                   const ranges = source?.date_ranges;
@@ -5625,7 +5640,7 @@ export function DesktopMultiSourceView() {
                     <span>Select current provider files</span>
                   </button>
                   <button type="button" onClick={() => navigateTo('TASKS')}>
-                    <strong>{dashboardAttentionCount} needs attention</strong>
+                    <strong>{dashboardAttentionCount} source readiness issue{dashboardAttentionCount === 1 ? '' : 's'}</strong>
                     <span>Resolve configuration or manual action</span>
                   </button>
                   <button

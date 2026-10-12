@@ -268,7 +268,7 @@ const main = async () => {
               ? taskPackageRequirements.map(() => 'BLOCKED')
               : taskPackageRequirements.map(() => 'REUSE_EXACT');
           return {
-            recipe_id: 'ADS_OPTIMIZATION_PACK', recipe_version: 1,
+            recipe_id: 'ADS_OPTIMIZATION_PACK', recipe_version: 2,
             recipe_label: 'Kampanya Gelişim', workspace_id: 'ws_fixture',
             account_identity: { field: 'customer_id', value: '1234567890' },
             customer_id: '1234567890', reference_date: '2026-09-30',
@@ -705,6 +705,9 @@ const main = async () => {
 
           reviewDesktopTaskPackage: async (reviewIntent) => {
             window.__taskPackageReviewCalls.push(structuredClone(reviewIntent));
+            if (window.__taskPackageReviewMode === 'ERROR') {
+              return { ok: false, error: { code: 'LOCAL_REVIEW_FAILED', retryable: false } };
+            }
             return { ok: true, result: taskPackageReview() };
           },
           startDesktopTaskPackage: async (startIntent) => {
@@ -1836,6 +1839,10 @@ const main = async () => {
               },
             ];
 
+            if (workspaceId === 'ws_fixture' && window.__homeRetryRequired === true) {
+              runs.push(taskPackageRunState(false).run);
+            }
+
             if (workspaceId === 'ws_other') {
               if (window.__emptyWorkspaceRunHistory === true) return [];
               return [{
@@ -2678,7 +2685,7 @@ const main = async () => {
     assert.equal(await dashboard.getByText('6 ready', { exact: true }).count(), 1);
     assert.equal(await dashboard.getByText('2 need connection', { exact: true }).count(), 1);
     assert.equal(await dashboard.getByText('2 need import', { exact: true }).count(), 1);
-    assert.equal(await dashboard.getByText('1 needs attention', { exact: true }).count(), 1);
+    assert.equal(await dashboard.getByText('1 source readiness issue', { exact: true }).count(), 1);
     assert.equal(await dashboard.getByText('Recent completed work', { exact: true }).count(), 1);
     assert.equal(
       await page.getByTestId('task-card').count(),
@@ -2706,6 +2713,28 @@ const main = async () => {
       await homeActiveRuns.getByText('No active or unfinished Runs in this Workspace.', { exact: true }).count(),
       0,
     );
+
+    await page.evaluate(() => {
+      window.__serpApiReady = true;
+      window.__homeRetryRequired = true;
+      window.__emptyWorkspaceRunHistory = true;
+    });
+    await page.getByLabel('Active Workspace', { exact: true }).selectOption('ws_other');
+    await dashboard.getByText('0 source readiness issues', { exact: true }).waitFor();
+    await homeActiveRuns.getByText('No active or unfinished Runs in this Workspace.', { exact: true }).waitFor();
+    await page.evaluate(() => { window.__emptyWorkspaceRunHistory = false; });
+    await page.getByLabel('Active Workspace', { exact: true }).selectOption('ws_fixture');
+    await dashboard.getByText('0 source readiness issues', { exact: true }).waitFor();
+    await homeActiveRuns.getByTestId('home-unfinished-run')
+      .filter({ hasText: 'rr_fixture_package_001' })
+      .getByText('Run status: RETRY REQUIRED', { exact: true }).waitFor();
+    await page.evaluate(() => {
+      window.__serpApiReady = false;
+      window.__homeRetryRequired = false;
+    });
+    await page.getByLabel('Active Workspace', { exact: true }).selectOption('ws_other');
+    await page.getByLabel('Active Workspace', { exact: true }).selectOption('ws_fixture');
+    await dashboard.getByText('1 source readiness issue', { exact: true }).waitFor();
 
     await page.getByRole('button', { name: 'TASKS', exact: true }).click();
     await page.evaluate(() => {
@@ -3308,12 +3337,12 @@ const main = async () => {
 
     assert.equal(
       await page.evaluate(() => window.__workspaceConnectionReadCount),
-      22,
-      'Initial read, HOME and Run Detail Workspace isolation changes, the OAuth provider update, and every connection mutation must reread exactly once.',
+      26,
+      'Initial read, HOME and Run Detail Workspace isolation changes, four HOME attention fixture switches, the OAuth provider update, and every connection mutation must reread exactly once.',
     );
     assert.deepEqual(
       await page.evaluate(() => window.__workspaceConnectionReadsAfterMutation),
-      [0, 0, 0, 0, 0, 0, ...Array.from({ length: 16 }, (_, index) => index + 1)],
+      [...Array(10).fill(0), ...Array.from({ length: 16 }, (_, index) => index + 1)],
       'The OAuth provider update and every connection mutation branch must perform exactly one final reread.',
     );
     assert.deepEqual(
@@ -5357,6 +5386,20 @@ const main = async () => {
       'GA4 renderer must send only task identity and explicit absolute dates to Review.',
     );
 
+    const reviewedGa4Dates = await page.evaluate(
+      () => window.__reviewedDesktopArtifact.resolved_configuration.sources['google-analytics-4'],
+    );
+    assert.equal(
+      await page.getByText(`Start date: ${reviewedGa4Dates.start_date}`, { exact: true }).count(),
+      1,
+      'GA4 Review must show the reviewed execution start date.',
+    );
+    assert.equal(
+      await page.getByText(`End date: ${reviewedGa4Dates.end_date}`, { exact: true }).count(),
+      1,
+      'GA4 Review must show the reviewed execution end date.',
+    );
+
     await page.getByRole(
       'button',
       {
@@ -5373,6 +5416,20 @@ const main = async () => {
         () => window.__reviewedDesktopArtifact,
       ),
       'GA4 Start must forward the exact reviewed artifact.',
+    );
+
+    await page.reload();
+    await page.getByRole('button', { name: 'TASKS', exact: true }).click();
+    await page.getByTestId('task-card').filter({ hasText: 'Google Analytics 4' }).click();
+    await page.getByLabel('GA4 start date', { exact: true }).fill('2026-10-01');
+    await page.getByLabel('GA4 end date', { exact: true }).fill('2026-10-01');
+    await page.getByRole('button', { name: 'Review Quick Run', exact: true }).click();
+    await page.getByText('Start date: 2026-10-01', { exact: true }).waitFor();
+    await page.getByText('End date: 2026-10-01', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Start Run', exact: true }).isEnabled(), true);
+    assert.equal(
+      await page.evaluate(() => window.__reviewedDesktopArtifact.resolved_configuration.sources['google-analytics-4'].start_date),
+      '2026-10-01',
     );
 
     console.log(
@@ -5560,6 +5617,7 @@ const main = async () => {
     for (const status of ['REUSE EXACT', 'REUSE FILTERED', 'NO DATA', 'COLLECT REQUIRED']) {
       assert.equal(await page.getByText(status, { exact: true }).count() > 0, true);
     }
+    assert.equal(await page.getByText('Reason: NO COMPATIBLE EVIDENCE', { exact: true }).count() > 0, true);
     assert.equal(await page.getByText('Provider-accepted no data for the exact window.', { exact: true }).count(), 1);
     assert.equal(await page.getByText(/0 rows/iu).count(), 0);
     const packageReviewText = (await page.getByTestId('task-package-review').innerText()).toLowerCase();
@@ -5569,6 +5627,7 @@ const main = async () => {
 
     await page.getByRole('button', { name: 'Start Collection', exact: true }).click();
     await page.getByRole('heading', { name: 'Run Detail', exact: true }).waitFor();
+    assert.equal(await page.evaluate(() => window.__taskPackageStartCalls.at(-1).recipe_version), 2);
     assert.equal(await page.getByText('AD_PERFORMANCE', { exact: true }).count(), 1);
     assert.equal(await page.getByText('RSA_ASSET_PERFORMANCE', { exact: true }).count(), 1);
     assert.equal(await page.getByRole('button', { name: 'Open Accepted Evidence', exact: true }).count(), 1);
@@ -5617,6 +5676,25 @@ const main = async () => {
     await page.getByRole('button', { name: 'Open Workbook', exact: true }).click();
     assert.deepEqual(await page.evaluate(() => window.__taskPackageOpenCalls.at(-1)), { package_id: 'pkg_published' });
     assert.equal(await page.evaluate(() => window.__taskPackageStartCalls.length >= 2), true);
+
+    await page.getByRole('button', { name: 'TASKS', exact: true }).click();
+    await packageCard.click();
+    await page.evaluate(() => { window.__taskPackageReviewMode = 'ERROR'; });
+    await page.getByRole('button', { name: 'Review Package', exact: true }).click();
+    await page.getByText('Package Review could not be completed due to an application error. Try again; if it persists, report the issue.', { exact: true }).waitFor();
+
+    await page.getByRole('button', { name: 'HOME', exact: true }).click();
+    await page.getByRole('heading', { name: 'Collection Operations', exact: true }).waitFor();
+    assert.equal(await page.getByText('Package Review could not be completed due to an application error. Try again; if it persists, report the issue.', { exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'RUNS', exact: true }).click();
+    assert.equal(await page.getByText('Package Review could not be completed due to an application error. Try again; if it persists, report the issue.', { exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'TASKS', exact: true }).click();
+    await packageCard.click();
+    assert.equal(await page.getByText('Package Review could not be completed due to an application error. Try again; if it persists, report the issue.', { exact: true }).count(), 0);
+    await page.evaluate(() => { window.__taskPackageReviewMode = 'NOT_READY'; });
+    await page.getByRole('button', { name: 'Review Package', exact: true }).click();
+    await page.getByRole('heading', { name: 'Kampanya Gelişim Review', exact: true }).waitFor();
+    assert.equal(await page.getByText('Package Review could not be completed due to an application error. Try again; if it persists, report the issue.', { exact: true }).count(), 0);
 
     // HOME must run a saved preset without entering its editor.
     await page.getByRole('button', { name: 'HOME', exact: true }).click();

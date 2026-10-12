@@ -162,7 +162,7 @@ const requireSafeReview = (value: unknown): DesktopTaskPackageReview => {
       'can_open', 'collection_run_id', 'requirements',
     ], ['previous_package_id', 'previous_window', 'gap_days', 'existing_package_id'])
     || value.recipe_id !== 'ADS_OPTIMIZATION_PACK'
-    || value.recipe_version !== 1
+    || value.recipe_version !== 2
     || !isNonEmptyString(value.recipe_label)
     || !isNonEmptyString(value.workspace_id)
     || !(isAccount(value.account_identity) || isEmptyAccount(value.account_identity))
@@ -395,7 +395,7 @@ export const createDesktopTaskPackageHandlers = <Event>(dependencies: {
     if (
       !isDesktopTaskPackageStartIntent(value)
       || value.recipe_id !== 'ADS_OPTIMIZATION_PACK'
-      || value.recipe_version !== 1
+      || value.recipe_version !== 2
       || value.account_identity.field !== 'customer_id'
       || !isWindow(value.current_window)
     ) return failure('INVALID_INTENT');

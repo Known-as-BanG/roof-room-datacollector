@@ -16,6 +16,8 @@ import { TaskPackageStore } from '../task-packages/task-package-store';
 
 const WORKBOOK_PATTERN =
   /^ROOFROOM_SEARCH_DEMAND_RAW_\d{4}-\d{2}-\d{2}\.xlsx$/u;
+const RUN_WORKBOOK_PATTERN =
+  /^ROOFROOM_SEARCH_DEMAND_RAW_\d{4}-\d{2}-\d{2}_(rr_[a-zA-Z0-9_-]+)\.xlsx$/u;
 
 const isInside = (
   root: string,
@@ -100,9 +102,8 @@ export const findLatestExportWorkbook = async (
         .filter(
           (entry) =>
             entry.isFile() &&
-            WORKBOOK_PATTERN.test(
-              entry.name,
-            ),
+            (WORKBOOK_PATTERN.test(entry.name)
+              || RUN_WORKBOOK_PATTERN.exec(entry.name)?.[1] === runName),
         )
         .map(
           (entry) =>
