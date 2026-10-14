@@ -7,6 +7,7 @@ import type { GoogleAdsSearchReportingDatasetDescriptor } from './search-reporti
 
 const SEARCH_TERM_FIELDS = [
   'search_term_view.search_term',
+  'search_term_view.status',
   'campaign.id',
   'campaign.name',
   'campaign.advertising_channel_type',
@@ -16,7 +17,6 @@ const SEARCH_TERM_FIELDS = [
   'segments.keyword.info.text',
   'segments.keyword.info.match_type',
   'segments.search_term_match_type',
-  'segments.search_term_targeting_status',
   'segments.date',
   'metrics.impressions',
   'metrics.clicks',

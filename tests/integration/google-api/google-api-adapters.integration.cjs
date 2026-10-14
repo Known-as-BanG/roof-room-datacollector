@@ -13,7 +13,7 @@ const { fetchKeywordPlanner } = require(path.join(buildRoot, 'main/sources/googl
   assert.equal(gscCalls, 2); assert.equal(gsc.rows.length, 25001); assert.equal(gsc.rows[0].query, 'q0');
   const canonicalAdsBody = [{
     results: [{
-      searchTermView: { searchTerm: 'ficus' },
+      searchTermView: { searchTerm: 'ficus', status: 'NONE' },
       campaign: { id: '1', name: 'Search Campaign', advertisingChannelType: 'SEARCH' },
       adGroup: { id: '2', name: 'Ficus Group' },
       segments: {
@@ -22,7 +22,6 @@ const { fetchKeywordPlanner } = require(path.join(buildRoot, 'main/sources/googl
           info: { text: 'ficus plant', matchType: 'PHRASE' },
         },
         searchTermMatchType: 'NEAR_PHRASE',
-        searchTermTargetingStatus: 'NONE',
         date: '2026-09-01',
       },
       metrics: {

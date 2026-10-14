@@ -54,11 +54,11 @@ const rowsByDataset = {
     segments: { date: '2026-09-02' }, metrics: baseMetrics,
   },
   SEARCH_TERMS: {
-    searchTermView: { searchTerm: 'buy ficus' },
+    searchTermView: { searchTerm: 'buy ficus', status: 'NONE' },
     campaign: { id: '101', name: 'Search', advertisingChannelType: 'SEARCH' },
     adGroup: { id: '201', name: 'Ficus' },
     segments: {
-      keyword: null, searchTermMatchType: 'BROAD', searchTermTargetingStatus: 'NONE',
+      keyword: null, searchTermMatchType: 'BROAD',
       date: '2026-09-02',
     },
     metrics: baseMetrics,

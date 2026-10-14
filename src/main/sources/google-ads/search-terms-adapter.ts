@@ -64,8 +64,8 @@ export const normalizeSearchTermPerformanceRows = (
         'segments.searchTermMatchType',
       ),
       search_term_targeting_status: requireReportingText(
-        segments.searchTermTargetingStatus,
-        'segments.searchTermTargetingStatus',
+        searchTermView.status ?? segments.searchTermTargetingStatus,
+        'searchTermView.status',
       ),
       performance_date: requirePerformanceDate(segments.date),
       ...normalizeCommonPerformanceMetrics(metrics),

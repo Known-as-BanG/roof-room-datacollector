@@ -75,12 +75,12 @@ test('ADS-REVIEW-BOUND-001: Review → atomic persisted Job → production reque
     requests.push({ url, ...options, body: JSON.parse(options.body) });
     // Official-schema-shaped deterministic fixture; this does not call Google.
     return Response.json([{ results: [{
-      searchTermView: { searchTerm: 'ficus' },
+      searchTermView: { searchTerm: 'ficus', status: 'NONE' },
       campaign: { id: '1', name: 'Search Campaign', advertisingChannelType: 'SEARCH' },
       adGroup: { id: '2', name: 'Ficus Group' },
       segments: {
         keyword: { adGroupCriterion: 'customers/123/adGroupCriteria/2~3', info: { text: 'ficus plant', matchType: 'PHRASE' } },
-        searchTermMatchType: 'NEAR_PHRASE', searchTermTargetingStatus: 'NONE', date: '2026-09-01',
+        searchTermMatchType: 'NEAR_PHRASE', date: '2026-09-01',
       },
       metrics: { impressions: '2', clicks: '1' },
     }] }]);

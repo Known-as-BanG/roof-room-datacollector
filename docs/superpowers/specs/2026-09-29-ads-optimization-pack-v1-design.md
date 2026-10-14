@@ -261,7 +261,7 @@ Required identity fields:
 - `segments.keyword.info.text`
 - `segments.keyword.info.match_type`
 - `segments.search_term_match_type`
-- `segments.search_term_targeting_status`
+- `search_term_view.status` (the v25 `search_term_view`-selectable provider field for search term targeting status)
 - `segments.date`
 
 Required performance metrics:

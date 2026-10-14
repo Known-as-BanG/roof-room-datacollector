@@ -208,7 +208,7 @@ for (const field of [
   'segments.keyword.info.text',
   'segments.keyword.info.match_type',
   'segments.search_term_match_type',
-  'segments.search_term_targeting_status',
+  'search_term_view.status',
   'segments.date',
   'metrics.impressions',
   'metrics.clicks',
@@ -225,13 +225,14 @@ for (const field of [
   assert.match(searchTermQuery, new RegExp(`\\b${field.replaceAll('.', '\\.')}\\b`, 'u'));
 }
 assert.match(searchTermQuery, /FROM search_term_view\b/u);
+assert.doesNotMatch(searchTermQuery, /segments\.search_term_targeting_status\b/u);
 assert.match(searchTermQuery, /campaign\.advertising_channel_type = 'SEARCH'/u);
 assert.match(searchTermQuery, /segments\.date BETWEEN '2026-09-01' AND '2026-09-07'/u);
 assert.doesNotMatch(searchTermQuery, /LAST_|TODAY|YESTERDAY/u);
 
 const searchTermRows = normalizeSearchTermPerformanceRows([
   {
-    searchTermView: { searchTerm: 'buy ficus' },
+    searchTermView: { searchTerm: 'buy ficus', status: 'NONE' },
     campaign: { id: '101', name: 'Search Campaign', advertisingChannelType: 'SEARCH' },
     adGroup: { id: '201', name: 'Ficus' },
     segments: {
@@ -240,7 +241,6 @@ const searchTermRows = normalizeSearchTermPerformanceRows([
         info: { text: 'ficus plant', matchType: 'PHRASE' },
       },
       searchTermMatchType: 'NEAR_PHRASE',
-      searchTermTargetingStatus: 'NONE',
       date: '2026-09-03',
     },
     metrics: {
@@ -301,6 +301,8 @@ const searchTermWithoutKeyword = normalizeSearchTermPerformanceRows([
 assert.equal(searchTermWithoutKeyword[0].keyword_resource_name, null);
 assert.equal(searchTermWithoutKeyword[0].keyword_text, null);
 assert.equal(searchTermWithoutKeyword[0].keyword_match_type, null);
+assert.equal(searchTermWithoutKeyword[0].search_term_targeting_status, 'NONE',
+  'Historical raw evidence with the segment status remains readable');
 
 assert.throws(
   () => normalizeKeywordPerformanceRows([{
