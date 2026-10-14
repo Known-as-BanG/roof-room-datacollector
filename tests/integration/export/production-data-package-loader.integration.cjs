@@ -8,6 +8,8 @@ if (!buildRoot || !workRoot) throw new Error('Expected compiled build and work r
 
 const { StorageManager } = require(path.join(buildRoot, 'main/storage/storage-manager.js'));
 const { ProductionDataPackageLoader } = require(path.join(buildRoot, 'main/export/production-data-package-loader.js'));
+const { buildDataPackage, writeDataPackageEvidence } = require(path.join(buildRoot, 'main/export/data-package-exporter.js'));
+const { GoogleAdsSearchTermsValidator } = require(path.join(buildRoot, 'main/sources/google-ads/search-terms-validator.js'));
 
 const columnName = (index) => {
   let value = index + 1;
@@ -101,6 +103,18 @@ const adsResourceModes = {
   RSA_ASSET_PERFORMANCE: 'ad_group_ad_asset_view',
 };
 
+const datedAdsRow = {
+  searchTermView: { searchTerm: 'example query', status: 'NONE' },
+  campaign: { id: '101', name: 'Search', advertisingChannelType: 'SEARCH' },
+  adGroup: { id: '201', name: 'Plants' },
+  segments: { keyword: null, searchTermMatchType: 'BROAD', date: '2026-09-16' },
+  metrics: { impressions: '10', clicks: '2', ctr: '0.2', averageCpc: null, costMicros: '0', conversions: '0', conversionsValue: null },
+};
+const datedAdsRaw = [{ results: [
+  datedAdsRow,
+  { ...datedAdsRow, segments: { ...datedAdsRow.segments, date: '2026-09-17' } },
+] }];
+
 const adsReportingFixture = (datasetType, body, suffix = '') => ({
   source_id: 'google-ads-search-reporting',
   job_key: datasetType,
@@ -163,6 +177,10 @@ async function main() {
       source_id: 'google-ads-search-terms', job_key: 'ads-current', filename: 'ads.json', media_type: 'application/json',
       bytes: jsonBytes([{ search_term: 'ficus', keyword: 'ficus', match_type: 'EXACT', campaign: 'Search', ad_group: 'Plants', impressions: 10, clicks: 1, ctr: 0.1, average_cpc_micros: 1500000, cost_micros: 1500000, conversions: null, conversion_value: null }]),
       source_context: { requested_date_start: '2026-06-01', requested_date_end: '2026-09-18' }, validation_status: 'VALID',
+    },
+    {
+      source_id: 'google-ads-search-terms', job_key: 'ads-dated', filename: 'ads-dated.json', media_type: 'application/json',
+      bytes: jsonBytes(datedAdsRaw), source_context: { requested_date_start: '2026-09-12', requested_date_end: '2026-09-18' }, validation_status: 'VALID',
     },
     ...Object.entries(adsReportingRows).map(([datasetType, row]) => (
       adsReportingFixture(datasetType, [{ results: [row] }])
@@ -238,12 +256,52 @@ async function main() {
   const datasets = await loader.loadRunDatasets(run.run_id);
   assert.deepEqual([...new Set(datasets.map((dataset) => dataset.source_id))], run.selected_sources);
   assert.deepEqual(datasets.map((dataset) => dataset.dataset_type), [
-    'INTEREST_OVER_TIME', 'QUERY_PAGE', 'QUERY', 'SEARCH_TERMS',
+    'INTEREST_OVER_TIME', 'QUERY_PAGE', 'QUERY', 'SEARCH_TERMS', 'SEARCH_TERMS',
     'CAMPAIGN_PERFORMANCE', 'AD_GROUP_PERFORMANCE', 'KEYWORD_PERFORMANCE', 'SEARCH_TERMS',
     'AD_PERFORMANCE', 'RSA_ASSET_PERFORMANCE', 'CAMPAIGN_PERFORMANCE', 'KEYWORD_HISTORICAL_METRICS',
     'KEYWORD_HISTORICAL_METRICS', 'PRODUCTS', 'SITEMAP_URLS', 'GOOGLE_SERP', 'CHANGE_HISTORY',
   ]);
   assert.equal(datasets.filter((dataset) => dataset.provenance.validation_status !== 'NO_DATA').every((dataset) => dataset.rows.length > 0), true);
+  const legacyAds = datasets.find((dataset) => dataset.job_key === 'ads-current');
+  assert.equal(legacyAds.rows[0].performance_date, null, 'Historical missing dates stay absent');
+  const datedAds = datasets.find((dataset) => dataset.job_key === 'ads-dated');
+  assert.equal(datedAds.rows.length, datedAdsRaw[0].results.length);
+  assert.deepEqual(datedAds.rows.map((row) => row.performance_date), ['2026-09-16', '2026-09-17']);
+  assert.deepEqual(datedAds.rows.map(({ performance_date, ...rest }) => rest), [datedAds.rows[0], datedAds.rows[0]].map(({ performance_date, ...rest }) => rest));
+  assert.equal(datedAds.rows[0].impressions, 10);
+  assert.equal(datedAds.rows[0].clicks, 2);
+  assert.equal(datedAds.rows[0].ctr, 0.2);
+  assert.equal(datedAds.rows[0].average_cpc, null);
+  assert.equal(datedAds.rows[0].cost, 0);
+  assert.equal(datedAds.rows[0].conversions, 0);
+  assert.equal(datedAds.rows[0].conversion_value, null);
+  const datedJob = jobs.find((job) => job.job_key === 'ads-dated');
+  const datedArtifact = artifacts.get(datedJob.accepted_artifact_id);
+  const historicalJob = jobs.find((job) => job.job_key === 'ads-current');
+  const historicalArtifact = artifacts.get(historicalJob.accepted_artifact_id);
+  const validator = new GoogleAdsSearchTermsValidator();
+  for (const [job, artifact] of [[datedJob, datedArtifact], [historicalJob, historicalArtifact]]) {
+    const validation = await validator.validate({
+      run, job, artifact,
+      absolute_path: storage.resolveRunRelativePath(run.run_id, artifact.relative_path),
+    });
+    assert.equal(validation.validation_status, 'VALID', 'Canonical and historical accepted rows remain valid');
+  }
+  assert.deepEqual(JSON.parse(fs.readFileSync(storage.resolveRunRelativePath(run.run_id, datedArtifact.relative_path), 'utf8')), datedAdsRaw, 'Raw evidence is unchanged');
+  assert.equal(datedAds.provenance.run_id, run.run_id);
+  assert.equal(datedAds.provenance.job_id, datedJob.job_id);
+  assert.equal(datedAds.provenance.attempt_number, datedArtifact.attempt_number);
+  assert.equal(datedAds.provenance.raw_artifact_id, datedArtifact.artifact_id);
+  const exportDirectory = path.join(workRoot, 'dated-ads-export');
+  await writeDataPackageEvidence(exportDirectory, buildDataPackage({ run, jobs, datasets, mode: 'ALL' }));
+  const exportedIndex = JSON.parse(fs.readFileSync(path.join(exportDirectory, 'DATASETS.json'), 'utf8'));
+  const datedIndex = exportedIndex.find((entry) => entry.job_id === datedJob.job_id);
+  const exportedRows = JSON.parse(fs.readFileSync(path.join(exportDirectory, datedIndex.filename), 'utf8'));
+  assert.equal(datedIndex.row_count, datedAdsRaw[0].results.length);
+  assert.deepEqual(exportedRows.map((row) => row.performance_date), ['2026-09-16', '2026-09-17']);
+  assert.equal(datedIndex.source_id, 'google-ads-search-terms');
+  assert.equal(datedIndex.provenance.raw_artifact_id, datedArtifact.artifact_id);
+  assert.equal(datedIndex.provenance.attempt_number, datedArtifact.attempt_number);
 
   const gscQuery = datasets.find((dataset) => dataset.source_id === 'google-search-console-query');
   assert.equal(gscQuery.dataset_type, 'QUERY');

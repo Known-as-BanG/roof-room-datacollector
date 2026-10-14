@@ -43,6 +43,21 @@ const { fetchKeywordPlanner } = require(path.join(buildRoot, 'main/sources/googl
   assert.equal(ads.rows[0].campaign, 'Search Campaign');
   assert.equal(ads.rows[0].ad_group, 'Ficus Group');
   assert.equal(ads.rows[0].average_cpc, 1.25); assert.equal(ads.rows[0].cost, 0);
+  const datedAds = normalizeSearchTerms([{
+    results: [
+      canonicalAdsBody[0].results[0],
+      { ...canonicalAdsBody[0].results[0], segments: { ...canonicalAdsBody[0].results[0].segments, date: '2026-09-02' } },
+    ],
+  }]);
+  assert.equal(datedAds.length, 2, 'Each provider row remains a separate normalized row');
+  assert.deepEqual(datedAds.map((row) => row.performance_date), ['2026-09-01', '2026-09-02']);
+  assert.deepEqual(
+    datedAds.map(({ performance_date, ...metricsAndIdentity }) => metricsAndIdentity),
+    [datedAds[0], datedAds[0]].map(({ performance_date, ...metricsAndIdentity }) => metricsAndIdentity),
+    'Adding the observed date does not change metrics, units, nulls, or business fields',
+  );
+  assert.equal(datedAds[0].conversion_value, null);
+  assert.equal(datedAds[0].cost, 0);
   const legacyAds = normalizeSearchTerms([
     {
       search_term: 'historical accepted artifact',
@@ -51,10 +66,17 @@ const { fetchKeywordPlanner } = require(path.join(buildRoot, 'main/sources/googl
       impressions: '0',
       clicks: null,
     },
+    { search_term: 'historical dated artifact', date: '2026-09-03' },
+    { search_term: 'historical normalized date', performance_date: '2026-09-04' },
+    { search_term: 'historical invalid date', date: '2026-02-30' },
   ]);
   assert.equal(legacyAds[0].search_term, 'historical accepted artifact');
   assert.equal(legacyAds[0].average_cpc, 0);
   assert.equal(legacyAds[0].cost, null);
+  assert.equal(legacyAds[0].performance_date, null);
+  assert.equal(legacyAds[1].performance_date, '2026-09-03');
+  assert.equal(legacyAds[2].performance_date, '2026-09-04');
+  assert.equal(legacyAds[3].performance_date, null);
   const planner = await fetchKeywordPlanner(
     {
       customer_id: '123',

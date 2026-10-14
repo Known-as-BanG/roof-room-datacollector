@@ -5,5 +5,5 @@ cd "$PROJECT_DIR"
 export NODE_PATH="$PROJECT_DIR/node_modules"
 TMP_ROOT="$(mktemp -d)"
 trap 'rm -rf "$TMP_ROOT"' EXIT
-npx tsc src/main/export/production-data-package-loader.ts --rootDir src --outDir "$TMP_ROOT/build" --module commonjs --target ES2022 --esModuleInterop --strict --skipLibCheck
+npx tsc src/main/export/production-data-package-loader.ts src/main/export/data-package-exporter.ts src/main/sources/google-ads/search-terms-validator.ts --rootDir src --outDir "$TMP_ROOT/build" --module commonjs --target ES2022 --esModuleInterop --strict --skipLibCheck
 node tests/integration/export/production-data-package-loader.integration.cjs "$TMP_ROOT/build" "$TMP_ROOT/work"

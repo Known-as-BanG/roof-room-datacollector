@@ -84,6 +84,15 @@ export const normalizeSearchTermPerformanceRows = (
 const normalizeLegacySearchTerms = (body: unknown[]): AdsSearchTermRow[] => (
   body.map((entry, index) => {
     const row = requireApiObject(entry, `Search Terms rows[${index}]`);
+    const observedDate = row.performance_date ?? row.date;
+    let performanceDate: string | null = null;
+    if (observedDate !== null && observedDate !== undefined) {
+      try {
+        performanceDate = requirePerformanceDate(observedDate, 'performance_date');
+      } catch {
+        // Historical rows with an invalid optional date remain readable without an invented date.
+      }
+    }
     const averageCpcMicros = requireNumberOrNull(
       row.average_cpc_micros,
       'average_cpc_micros',
@@ -95,6 +104,7 @@ const normalizeLegacySearchTerms = (body: unknown[]): AdsSearchTermRow[] => (
       match_type: row.match_type == null ? null : String(row.match_type),
       campaign: row.campaign == null ? null : String(row.campaign),
       ad_group: row.ad_group == null ? null : String(row.ad_group),
+      performance_date: performanceDate,
       impressions: requireNumberOrNull(row.impressions, 'impressions'),
       clicks: requireNumberOrNull(row.clicks, 'clicks'),
       ctr: requireNumberOrNull(row.ctr, 'ctr'),
@@ -119,6 +129,7 @@ export const normalizeSearchTerms = (body: unknown): AdsSearchTermRow[] => {
     match_type: row.search_term_match_type,
     campaign: row.campaign_name,
     ad_group: row.ad_group_name,
+    performance_date: row.performance_date,
     impressions: row.impressions,
     clicks: row.clicks,
     ctr: row.ctr,
