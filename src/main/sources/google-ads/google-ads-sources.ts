@@ -3,6 +3,7 @@ import type { SourceCapabilities, SourceReadinessResult } from '../../../shared/
 import { GOOGLE_ADS_SEARCH_TERMS_SOURCE_ID, GOOGLE_KEYWORD_PLANNER_SOURCE_ID } from '../../../shared/google-api';
 import { fetchSearchTerms } from './search-terms-adapter'; import { requestKeywordPlannerRaw } from './keyword-planner-adapter'; import type { ApiRequester } from '../google-api/api-helpers';
 import { mapGoogleApiCollectionError } from '../google-api/google-api-error';
+import { mapGoogleAdsSearchTermsError } from './google-ads-api-error';
 import { buildSearchTermsQuery } from './search-terms-request';
 import {
   keywordPlannerJobContextFromCollection,
@@ -62,7 +63,7 @@ export class GoogleAdsSearchTermsSource implements CollectingDataSourceModule {
       const result = await fetchSearchTerms({ customer_id: requestCustomerId, query }, this.requester);
       return { result_type: 'ARTIFACT_PRODUCED', preferred_filename: 'google-ads-search-terms.json', media_type: 'application/json', bytes: new TextEncoder().encode(JSON.stringify(result.raw)) };
     } catch (error) {
-      return mapGoogleApiCollectionError(error, 'GOOGLE_ADS_API_FAILED', 'Google Ads request failed.');
+      return mapGoogleAdsSearchTermsError(error);
     }
   }
 }

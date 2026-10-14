@@ -1,5 +1,5 @@
-export interface ApiResponse { status: number; body: unknown; raw_body?: Uint8Array; }
-export type ApiRequester = (request: { url: string; method: 'GET' | 'POST'; body?: unknown; headers?: Record<string, string> }) => Promise<ApiResponse>;
+export interface ApiResponse { status: number; body: unknown; raw_body?: Uint8Array; request_id?: string; }
+export type ApiRequester = (request: { url: string; method: 'GET' | 'POST'; body?: unknown; headers?: Record<string, string>; return_non_success_response?: boolean }) => Promise<ApiResponse>;
 
 export type GoogleOAuthProviderErrorCode =
   | 'access_denied'
@@ -121,6 +121,22 @@ export const createFetchApiRequester = (
     clearTimeout(timeout);
   }
 
+  const responseRequestId = response.headers.get('request-id')
+    ?? response.headers.get('x-request-id');
+  const requestId = typeof responseRequestId === 'string'
+    && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(responseRequestId)
+    ? responseRequestId
+    : undefined;
+
+  if (request.return_non_success_response) {
+    return {
+      status: response.status,
+      body,
+      raw_body: rawBody,
+      ...(requestId === undefined ? {} : { request_id: requestId }),
+    };
+  }
+
   if (response.status === 401 || response.status === 403) {
       throw new GoogleApiTransportError(
         'PROVIDER_AUTHORIZATION_FAILED',
@@ -143,7 +159,12 @@ export const createFetchApiRequester = (
     );
   }
 
-  return { status: response.status, body, raw_body: rawBody };
+  return {
+    status: response.status,
+    body,
+    raw_body: rawBody,
+    ...(requestId === undefined ? {} : { request_id: requestId }),
+  };
 };
 
 export const requireApiObject = (value: unknown, context: string): Record<string, unknown> => { if (typeof value !== 'object' || value === null || Array.isArray(value)) throw new Error(`${context} must be an object.`); return value as Record<string, unknown>; };

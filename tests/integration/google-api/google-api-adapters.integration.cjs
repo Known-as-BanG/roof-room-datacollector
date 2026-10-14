@@ -2,6 +2,8 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const [buildRoot] = process.argv.slice(2);
 if (!buildRoot) throw new Error('Expected compiled build root.');
+const { GoogleAdsSearchTermsSource } = require(path.join(buildRoot, 'main/sources/google-ads/google-ads-sources.js'));
+const { createFetchApiRequester } = require(path.join(buildRoot, 'main/sources/google-api/api-helpers.js'));
 const { fetchGscQueryPage } = require(path.join(buildRoot, 'main/sources/google-search-console/query-page-adapter.js'));
 const { fetchSearchTerms, normalizeSearchTerms } = require(path.join(buildRoot, 'main/sources/google-ads/search-terms-adapter.js'));
 const { fetchKeywordPlanner } = require(path.join(buildRoot, 'main/sources/google-ads/keyword-planner-adapter.js'));
@@ -250,6 +252,133 @@ const { fetchKeywordPlanner } = require(path.join(buildRoot, 'main/sources/googl
     null,
     'YoY change must remain null when the previous-year baseline is zero.',
   );
+
+  const collectionContext = {
+    run_id: 'run-diagnostic-test',
+    job_id: 'job-diagnostic-test',
+    attempt_id: 'attempt-diagnostic-test',
+    attempt_number: 1,
+    source_id: 'google-ads-search-terms',
+    job_key: 'search-terms-1',
+    query_group_id: null,
+    requested_configuration: null,
+    source_context: {
+      task_id: 'google-ads-search-terms',
+      source_id: 'google-ads-search-terms',
+      source_mode: 'search_term_view',
+      campaign_type: 'SEARCH',
+      requested_date_start: '2026-10-01',
+      requested_date_end: '2026-10-12',
+    },
+  };
+  const mockProviderResponse = (status, body, requestId) => ({
+    status,
+    headers: {
+      get(name) {
+        if (name === 'content-type') return 'application/json';
+        return name === 'request-id' ? requestId : null;
+      },
+    },
+    arrayBuffer: async () => Buffer.from(JSON.stringify(body)),
+  });
+  const collectFailure = async (status, body, requestId = null) => {
+    const requester = createFetchApiRequester(async () =>
+      mockProviderResponse(status, body, requestId));
+    const source = new GoogleAdsSearchTermsSource('123', requester);
+    return source.collect(collectionContext);
+  };
+  const googleAdsFailure = (status, detail, requestId) => ({
+    error: {
+      code: status,
+      message: 'PRIVATE_PROVIDER_MESSAGE_MUST_NOT_ESCAPE',
+      status: detail.status,
+      details: [{
+        '@type': 'type.googleapis.com/google.ads.googleads.v25.errors.GoogleAdsFailure',
+        requestId,
+        errors: [{
+          errorCode: detail.errorCode,
+          message: 'PRIVATE_ERROR_MESSAGE_MUST_NOT_ESCAPE',
+        }],
+      }],
+    },
+  });
+
+  const invalidRequest = await collectFailure(400, googleAdsFailure(
+    400,
+    { status: 'INVALID_ARGUMENT', errorCode: { queryError: 'UNRECOGNIZED_FIELD' } },
+    'request-invalid-42',
+  ));
+  assert.equal(invalidRequest.result_type, 'FAILED');
+  assert.match(invalidRequest.error_code, /GOOGLE_ADS_API_FAILED_HTTP_400_INVALID_REQUEST/u);
+  assert.match(invalidRequest.error_code, /^[A-Z][A-Z0-9_]{0,63}$/u);
+  assert.match(invalidRequest.message, /GoogleAdsFailure\.QueryError\.UNRECOGNIZED_FIELD/u);
+  assert.match(invalidRequest.message, /request ID request-invalid-42/u);
+  assert.equal(JSON.stringify(invalidRequest).includes('PRIVATE_'), false);
+
+  const apiConfiguration = await collectFailure(403, googleAdsFailure(
+    403,
+    { status: 'PERMISSION_DENIED', errorCode: { authorizationError: 'CUSTOMER_NOT_ENABLED' } },
+    'request-config-7',
+  ));
+  assert.equal(apiConfiguration.result_type, 'FAILED');
+  assert.match(apiConfiguration.error_code, /HTTP_403_API_CONFIGURATION_ERROR/u);
+  assert.match(apiConfiguration.message, /AuthorizationError\.CUSTOMER_NOT_ENABLED/u);
+  assert.match(apiConfiguration.message, /request ID request-config-7/u);
+  assert.equal(JSON.stringify(apiConfiguration).includes('PRIVATE_'), false);
+
+  const projectAccess = await collectFailure(403, googleAdsFailure(
+    403,
+    { status: 'PERMISSION_DENIED', errorCode: { authorizationError: 'CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION' } },
+    'request-project-8',
+  ));
+  assert.match(projectAccess.error_code, /HTTP_403_API_CONFIGURATION_ERROR/u);
+  assert.match(projectAccess.message, /AuthorizationError\.CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION/u);
+
+  const authorizationFailure = await collectFailure(403, googleAdsFailure(
+    403,
+    { status: 'PERMISSION_DENIED', errorCode: { authorizationError: 'USER_PERMISSION_DENIED' } },
+    'request-authz-5',
+  ));
+  assert.match(authorizationFailure.error_code, /HTTP_403_AUTHORIZATION_ERROR/u);
+  assert.match(authorizationFailure.message, /AuthorizationError\.USER_PERMISSION_DENIED/u);
+
+  const authenticationFailure = await collectFailure(401, googleAdsFailure(
+    401,
+    { status: 'UNAUTHENTICATED', errorCode: { authenticationError: 'OAUTH_TOKEN_REVOKED' } },
+    'request-auth-3',
+  ));
+  assert.match(authenticationFailure.error_code, /HTTP_401_AUTHENTICATION_ERROR/u);
+  assert.match(authenticationFailure.message, /AuthenticationError\.OAUTH_TOKEN_REVOKED/u);
+
+  const rateLimited = await collectFailure(429, googleAdsFailure(
+    429,
+    { status: 'RESOURCE_EXHAUSTED', errorCode: { quotaError: 'RESOURCE_EXHAUSTED' } },
+    null,
+  ), 'request-rate-9');
+  assert.match(rateLimited.error_code, /HTTP_429_RATE_LIMIT/u);
+  assert.match(rateLimited.message, /request ID request-rate-9/u);
+
+  const providerUnavailable = await collectFailure(503, {
+    error: {
+      code: 503,
+      status: 'UNAVAILABLE',
+      message: 'PRIVATE_PROVIDER_MESSAGE_MUST_NOT_ESCAPE',
+    },
+  });
+  assert.equal(providerUnavailable.error_code, 'GOOGLE_ADS_API_FAILED_HTTP_503');
+  assert.equal(JSON.stringify(providerUnavailable).includes('PRIVATE_'), false);
+
+  const networkFailure = await new GoogleAdsSearchTermsSource(
+    '123',
+    createFetchApiRequester(async () => {
+      throw new Error('PRIVATE_NETWORK_DETAIL_MUST_NOT_ESCAPE');
+    }),
+  ).collect(collectionContext);
+  assert.equal(networkFailure.result_type, 'FAILED');
+  assert.match(networkFailure.error_code, /GOOGLE_ADS_API_FAILED_NETWORK_FAILURE/u);
+  assert.match(networkFailure.error_code, /^[A-Z][A-Z0-9_]{0,63}$/u);
+  assert.equal(JSON.stringify(networkFailure).includes('PRIVATE_'), false);
+
   await assert.rejects(() => fetchSearchTerms({ customer_id: '123', query: 'x' }, async () => ({ status: 401, body: { error: 'unauthorized' } })));
   console.log('PASS GOOGLE-API-001: GSC pagination and Google Ads Search Terms/Keyword Planner normalization preserve raw responses and provider-native null/micros semantics');
 })();

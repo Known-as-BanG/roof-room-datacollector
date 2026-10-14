@@ -17,6 +17,7 @@ import {
   requireReportingText,
 } from './reporting-row-helpers';
 import { flattenGoogleAdsSearchStream } from './search-stream-response';
+import { createGoogleAdsApiResponseError } from './google-ads-api-error';
 
 const reportingTextOrNull = (value: unknown, field: string): string | null => (
   value === null || value === undefined
@@ -138,9 +139,10 @@ export const fetchSearchTerms = async (
     url: `https://googleads.googleapis.com/v25/customers/${request.customer_id}/googleAds:searchStream`,
     method: 'POST',
     body: { query: request.query },
+    return_non_success_response: true,
   });
   if (response.status < 200 || response.status >= 300) {
-    throw new Error(`Google Ads provider error HTTP ${response.status}.`);
+    throw createGoogleAdsApiResponseError(response);
   }
   return { raw: response.body, rows: normalizeSearchTerms(response.body) };
 };
