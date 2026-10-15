@@ -124,6 +124,32 @@ export class ProductionDataPackageLoader {
     return this.loadEligibleJobDataset(run, job);
   }
 
+  async verifyAcceptedJobArtifact(
+    run_id: string,
+    job_id: string,
+  ): Promise<{ artifact: ArtifactRecord; requested_context: unknown }> {
+    const { artifact, requested_context } = await this.readAcceptedJobArtifact(run_id, job_id);
+    return { artifact, requested_context };
+  }
+
+  async readAcceptedJobArtifact(
+    run_id: string,
+    job_id: string,
+  ): Promise<{ artifact: ArtifactRecord; requested_context: unknown; bytes: Uint8Array }> {
+    const run = this.repository.getRun(run_id);
+    if (run === null) throw new Error(`Unknown Run: ${run_id}`);
+    const job = this.repository.listJobs(run_id).find((candidate) => candidate.job_id === job_id);
+    if (
+      job === undefined || job.run_id !== run_id
+      || job.execution_status !== 'COMPLETED'
+      || !ACCEPTED_VALIDATION.has(job.validation_status)
+      || job.accepted_artifact_id === null
+    ) throw new Error(`Job ${job_id} is not eligible accepted evidence.`);
+    const artifact = this.requireAcceptedArtifact(run, job);
+    const bytes = await this.readVerifiedArtifact(artifact);
+    return { artifact, requested_context: safeContext(job.source_context), bytes };
+  }
+
   private async loadEligibleJobDataset(
     run: RunRecord,
     job: JobRecord,
