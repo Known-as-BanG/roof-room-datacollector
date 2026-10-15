@@ -142,6 +142,41 @@ export const normalizeSearchTerms = (body: unknown): AdsSearchTermRow[] => {
   }));
 };
 
+// Presence is inspected before normalization can turn absent provider fields into null.
+export const inspectSearchTermsFields = (body: unknown) => {
+  const rows = normalizeSearchTerms(body);
+  const topLevel = requireArray(body, 'Search Terms response');
+  const legacy = topLevel.length > 0 && Object.hasOwn(requireApiObject(topLevel[0], 'Search Terms response[0]'), 'search_term');
+  const rawRows = legacy ? topLevel.map((row) => requireApiObject(row, 'Search Terms row'))
+    : flattenGoogleAdsSearchStream(body);
+  const paths: Record<string, string[]> = legacy ? {
+    search_term: ['search_term'], campaign: ['campaign'], ad_group: ['ad_group'],
+    impressions: ['impressions'], clicks: ['clicks'], ctr: ['ctr'], cost: ['cost_micros'],
+    conversions: ['conversions'], conversion_value: ['conversion_value'],
+  } : {
+    search_term: ['searchTermView', 'searchTerm'], campaign: ['campaign', 'name'], ad_group: ['adGroup', 'name'],
+    impressions: ['metrics', 'impressions'], clicks: ['metrics', 'clicks'], ctr: ['metrics', 'ctr'],
+    cost: ['metrics', 'costMicros'], conversions: ['metrics', 'conversions'], conversion_value: ['metrics', 'conversionsValue'],
+  };
+  const presence = rawRows.map((row) => Object.fromEntries(Object.entries(paths).map(([field, path]) => {
+    let value: unknown = row;
+    for (const key of path) {
+      if (typeof value !== 'object' || value === null || !Object.hasOwn(value, key)) return [field, false];
+      value = (value as Record<string, unknown>)[key];
+    }
+    if (field === 'search_term' && value === null || ['search_term', 'campaign', 'ad_group'].includes(field)
+      && value !== null && (typeof value !== 'string' || value.trim().length === 0)) {
+      throw new Error('Search Terms text field is not compatible with its source meaning.');
+    }
+    if (!['search_term', 'campaign', 'ad_group'].includes(field)
+      && value !== null && value !== '' && (typeof value !== 'number' && typeof value !== 'string' || String(value).trim() === '')) {
+      throw new Error('Search Terms metric field is not compatible with its source meaning.');
+    }
+    return [field, value !== undefined];
+  })));
+  return { rows, presence };
+};
+
 export const fetchSearchTerms = async (
   request: { customer_id: string; query: string },
   requester: ApiRequester,

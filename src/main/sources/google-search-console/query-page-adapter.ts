@@ -15,6 +15,27 @@ const gscTurkeyCountryFilter = () => [{
 export interface GscQueryPageRequest { site_url: string; start_date: string; end_date: string; country_filter?: 'TUR'; }
 export interface GscQueryPageResult { raw_pages: unknown[]; rows: GscQueryPageRow[]; }
 export const normalizeGscRows = (body: unknown): GscQueryPageRow[] => requireArray(requireApiObject(body, 'GSC response').rows, 'GSC response.rows').map((entry, index) => { const row = requireApiObject(entry, `GSC rows[${index}]`); const keys = requireArray(row.keys, `GSC rows[${index}].keys`); if (keys.length < 2 || typeof keys[0] !== 'string' || typeof keys[1] !== 'string') throw new Error('GSC row keys must contain query and page.'); return { query: keys[0], page: keys[1], clicks: requireNumberOrNull(row.clicks, 'clicks'), impressions: requireNumberOrNull(row.impressions, 'impressions'), ctr: requireNumberOrNull(row.ctr, 'ctr'), position: requireNumberOrNull(row.position, 'position') }; });
+// Keep raw metric presence separate from the normalizer's nullable result.
+export const inspectGscQueryPageFields = (body: unknown) => {
+  const pages = requireArray(body, 'GSC accepted pages');
+  const rows = pages.flatMap(normalizeGscRows);
+  const presence = pages.flatMap((page) => requireArray(requireApiObject(page, 'GSC response').rows, 'GSC rows')
+    .map((entry) => {
+      const row = requireApiObject(entry, 'GSC row');
+      for (const field of ['clicks', 'impressions', 'ctr', 'position']) {
+        const value = row[field];
+        if (Object.hasOwn(row, field) && value !== null && value !== undefined && value !== ''
+          && (typeof value !== 'number' && typeof value !== 'string' || String(value).trim() === '')) {
+          throw new Error('GSC metric field is not compatible with its source meaning.');
+        }
+      }
+      return Object.fromEntries(['query', 'page', 'clicks', 'impressions', 'ctr', 'position'].map((field) => (
+        [field, field === 'query' || field === 'page' || Object.hasOwn(row, field) && row[field] !== undefined]
+      )));
+    }));
+  return { rows, presence };
+};
+
 // An absent scope preserves historical unfiltered GSC requests.
 const gscCountryFilterBody = (value: unknown) => {
   if (value === undefined) return {};

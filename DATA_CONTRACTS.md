@@ -618,6 +618,94 @@ COMPLETE; source field semantics, reporting windows, mandatory coverage, and ful
 delivery validation remain unevaluated. No SQLite migration or Core lifecycle
 change is involved.
 
+### `BLOG_WRITING_PACK v2` explicit readiness evaluation (Slices 3B.1–3B.2A)
+
+`evaluateBlogWritingPackV2Readiness({package_id, workspace_id, requirements},
+{store, repository, loader})` reads `BLOG_DRAFT.json` through `readDraft` and
+returns an in-memory evaluation; it never writes or promotes the draft. The
+version-1 requirements profile is explicit input with `recipe_version: 2`,
+per-family `open_decisions` / `required_source_changes` lists, and
+`gsc_requested_dates: {start_date, end_date} | null` and optional
+`ads_requested_dates: {start_date, end_date} | null`. Omitted/null Ads endpoints
+remain DECISION_REQUIRED; supplied endpoints must be real, ordered calendar dates.
+The current profile supplies neither source's endpoints. Unknown requirement fields
+are rejected rather than silently treated as checked. Omitted family policy
+produces DECISION_REQUIRED.
+
+The evaluator reuses Slice 1 for each exact selected reference and compares all
+resolved provenance with frozen membership. Changed context, IDs, or integrity
+references produce MEMBERSHIP_CHANGED. Rejected evidence and byte/checksum
+failures are blockers, never grounds to select a newer Run. No raw provider
+response or filesystem error path is included in blocker reports.
+
+Seven mandatory dataset types are fixed: SEARCH_TERMS, QUERY_PAGE,
+KEYWORD_HISTORICAL_METRICS, PRODUCTS, SITEMAP_URLS, GOOGLE_SERP, and
+GA4_CONTENT_PERFORMANCE. INTEREST_OVER_TIME remains optional. Each mandatory
+family reports MISSING, BLOCKED, or SATISFIED, selected count, and usable count.
+Here usable means exact revalidated identity with a VALID source verdict; it does
+not mean all downstream fields have been checked. LOW_DATA/NO_DATA coverage and
+multi-Job scope semantics remain DECISION_REQUIRED in this slice.
+
+GSC compares requested start/end dates with explicitly supplied approved
+endpoints (exactly 28 inclusive calendar dates). No reference date or timezone
+policy is derived. Wrong or missing requested dates produce WINDOW_MISMATCH;
+missing approved endpoints produce DECISION_REQUIRED. This date check applies
+independently of an accepted empty-result coverage decision. Aggregate rows are
+not reconstructed, filtered into daily data, or summed.
+
+Overall coverage is NOT_READY when no mandatory selection is usable, PARTIAL
+when some are usable but mandatory blockers remain, and COMPLETE only when all
+seven families satisfy the explicit supported requirements with no mandatory
+blocker. Every result includes `coverage_scope: EXPLICIT_REQUIREMENTS_ONLY`, the
+requirements snapshot and unchanged selected provenance, and
+`delivery_readiness: NOT_EVALUATED`. It does not claim full downstream delivery.
+Empty decision lists cannot approve unchecked families: selected Keyword Planner,
+Products, Sitemap, SERP, and GA4 families retain DECISION_REQUIRED for
+`field_compliance` until their separate slices are implemented; absent families
+remain MISSING. Thus this slice cannot produce full Blog v2 COMPLETE coverage.
+
+`BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS` records current real open decisions
+and known source gaps, with no automatic date or metric defaults. Using it cannot
+produce real COMPLETE coverage while those blockers remain. Blockers carry a
+dataset type, mandatory/optional designation, actual selection IDs, requirement,
+expected/actual safe condition, and next action. Supported codes are
+DATASET_MISSING, DECISION_REQUIRED, SOURCE_CHANGE_REQUIRED, WINDOW_MISMATCH,
+EVIDENCE_INVALID, ARTIFACT_INTEGRITY_FAILED, MEMBERSHIP_CHANGED, FIELD_ABSENT,
+FIELD_OBSERVATION_REQUIRED, and FIELD_REPRESENTATION_INVALID.
+
+For Ads/GSC only, the evaluator uses the existing loader's verified byte-read
+capability (`readAcceptedJobArtifact`) and existing source normalizers with
+source-local raw field-presence inspection. The read rechecks accepted ownership,
+size, SHA-256 and frozen artifact/context references. Invalid representations
+produce safe blockers without copying provider responses into reports.
+
+Ads requires search_term, campaign, ad_group, impressions, clicks, ctr, cost,
+conversions and conversion_value. Canonical SearchStream text comes from
+searchTermView.searchTerm, campaign.name and adGroup.name; metrics retain
+provider meaning, with costMicros divided by 1,000,000 through the existing
+normalizer and conversionsValue mapped to conversion_value. Legacy flat raw
+rows retain their existing mappings, including cost_micros conversion. Observed
+segments.date (or supported legacy performance_date/date) remains performance_date;
+no date is invented. Requested Ads endpoints are compared exactly, using the
+same endpoint-comparison path as GSC, with no default duration. Open decision
+lists remain authoritative and must explicitly be resolved by the caller.
+
+GSC query/page come from query × page row keys; page maps to page_url and
+position to average_position. Clicks, impressions, CTR fractions and provider
+average position are retained without recalculation. Requested GSC endpoints
+remain separate from provider row values; the existing exact 28-day check applies.
+
+Read-only `field_checks` contain per-selection IDs, row counts and field counts
+(observed, normalized null from present fields, absent); they contain no business row values. Field
+status is OBSERVED, NULL, ABSENT or UNRESOLVED (no rows). A missing raw property
+cannot become observed merely because normalization emits null. Explicit
+source-compatible nulls and zeros remain distinct. Existing legacy/GSC empty-string
+to null normalization is retained; it never proves an absent raw property. Incompatible source shapes
+or values produce FIELD_REPRESENTATION_INVALID; absent fields produce FIELD_ABSENT;
+empty rows produce FIELD_OBSERVATION_REQUIRED. The inspector separately reports
+UNSUPPORTED for source families outside its Ads/GSC implementation. NO_DATA and
+LOW_DATA retain their original verdict, coverage decision blocker, and independent
+window/field checks. Draft bytes, source validators and v1 export behavior are unchanged.
 
 ---
 

@@ -1,11 +1,11 @@
 # RoofRoom Data Collector — Project Handoff
 
-**Checkpoint date:** 2026-10-09
+**Checkpoint date:** 2026-10-15
 **Current branch:** `feat/google-analytics-4-source-v1`
-**Production implementation checkpoint:** P2-02 conversion-date reporting on `feat/google-analytics-4-source-v1`
-**Repository state:** P2-02 conversion-date task and source path are deterministically verified; the pre-existing RED test changes were preserved and completed
-**Current stage:** P2-02 source, export, controller, Playwright UI, typecheck, targeted lint, and ADS_OPTIMIZATION_PACK v2 Slice B gates passed; adjacent desktop Task Package Slice C still has a checked-in v1 fixture versus active v2 recipe mismatch
-**Current action:** review the focused P2-02 checkpoint; keep packaged/runtime and live Google Ads acceptance separate
+**Production implementation checkpoint:** Blog v2 Slices 1–2 and 3B.1–3B.2A checkpoint on `feat/google-analytics-4-source-v1` (baseline `218d56c`)
+**Repository state:** Blog v2 selection, immutable draft membership, explicit-requirements evaluation and Ads/GSC field checks are included in this checkpoint; existing `reports/` is preserved outside Git
+**Current stage:** field compliance 13/13, readiness 10/10, Slice 1 7/7, Slice 2 8/8; relevant adapters, loader, v1 gate, TypeScript, lint and diff checks passed locally
+**Current action:** review Slice 3B.2A; approve Ads reporting window and exact GSC endpoints, then separately address the remaining five mandatory families before full Blog v2 compliance or delivery
 
 ---
 
@@ -228,6 +228,39 @@ The Blog package:
 - builds/opens/reveals locally without provider acquisition, retry, new Attempts, Run/Job mutation, or schema migration.
 
 Fresh deterministic verification and packaged arm64 acceptance passed. No live provider request was made for this slice.
+
+### `BLOG_WRITING_PACK v2` draft membership
+
+The implementation adds a version-specific selection resolver and draft assembler
+above existing accepted evidence. Assembly revalidates exact Run/Job/Attempt/
+Validation/Artifact identity, Workspace ownership, and raw artifact integrity.
+`BlogWritingPackStore.saveDraft/readDraft` persists fixed multi-Run membership in
+`BLOG_DRAFT.json`, with `state: DRAFT` and `readiness_status: NOT_EVALUATED`.
+The existing v1 publication/open paths do not accept drafts as delivery packages.
+
+No SQLite migration, Core lifecycle change, normalized row export, workbook,
+desktop v2 build flow, final coverage evaluation, or live acceptance is included.
+The additive disk contract is in `DATA_CONTRACTS.md`; the focused execution record
+is `docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-draft-membership.md`.
+
+Slice 3B.1 adds an in-memory evaluator against the existing stored draft. It
+revalidates exact frozen evidence through Slice 1, checks seven mandatory families
+and explicitly supplied GSC requested endpoints, and reports decision/source-change
+blockers. Coverage is restricted to explicit supported checks; delivery remains
+NOT_EVALUATED. The supplied current real requirements profile remains blocked.
+It changes no draft bytes, membership rules, source acquisition, or v1 behavior.
+The execution record is `docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-readiness.md`.
+
+Slice 3B.2A adds actual Ads/GSC source-field presence and normalization checks
+through the verified accepted-artifact loader. Read-only field summaries distinguish
+observed values, compatible nulls, absent fields and empty evidence; no row data
+is persisted. Ads has no inferred reporting window; explicit approved endpoints
+are required. GSC reuses the exact 28-day endpoint validation, with page → page_url
+and position → average_position downstream aliases. The other five mandatory
+families remain explicitly unresolved even if a caller clears decision lists.
+Frozen drafts, source verdicts and v1 remain unchanged. This slice includes no
+live, packaged, publication or production-data acceptance. Execution record:
+`docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-ads-gsc-compliance.md`.
 
 ---
 
