@@ -18,6 +18,8 @@ import {
   type BlogWritingPackManifest,
 } from '../../shared/blog-writing-pack';
 import type { DataPackage } from '../../shared/data-package';
+import type { BlogWritingPackV2Draft } from '../../shared/blog-writing-pack-v2-draft';
+import { parseBlogWritingPackV2Draft } from './blog-writing-pack-v2-draft';
 import { writeDataPackageEvidence } from '../export/data-package-exporter';
 import {
   BLOG_WRITING_PACK_RECIPE,
@@ -337,5 +339,48 @@ export class BlogWritingPackStore {
   async readManifest(package_id: string): Promise<BlogWritingPackManifest> {
     const packageId = safeSegment(package_id, 'package_id');
     return this.validatePackage(inside(this.root, packageId, 'package'), packageId);
+  }
+
+  private async validateDraft(directory: string, packageId: string): Promise<BlogWritingPackV2Draft> {
+    const stat = await lstat(directory);
+    if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error('Blog v2 draft directory is invalid.');
+    const entries = await readdir(directory, { withFileTypes: true });
+    if (
+      entries.length !== 1 || entries[0].name !== 'BLOG_DRAFT.json'
+      || !entries[0].isFile() || entries[0].isSymbolicLink()
+    ) throw new Error('Blog v2 draft file set is invalid.');
+    const draft = parseBlogWritingPackV2Draft(await parseJson(
+      inside(directory, 'BLOG_DRAFT.json', 'draft membership'), 'BLOG_DRAFT.json',
+    ));
+    if (draft.package_id !== packageId) throw new Error('Blog v2 draft package identity does not match its directory.');
+    return draft;
+  }
+
+  async saveDraft(input: BlogWritingPackV2Draft): Promise<BlogWritingPackV2Draft> {
+    const draft = parseBlogWritingPackV2Draft(input);
+    const packageId = safeSegment(draft.package_id, 'draft package_id');
+    await mkdir(this.root, { recursive: true });
+    const finalDirectory = inside(this.root, packageId, 'draft');
+    if (await exists(finalDirectory)) throw new Error(`Blog package ${packageId} exists; refusing overwrite.`);
+    const stagingDirectory = await mkdtemp(path.join(this.root, `.${packageId}.tmp-`));
+    try {
+      await writeFile(
+        inside(stagingDirectory, 'BLOG_DRAFT.json', 'draft membership'),
+        `${JSON.stringify(draft, null, 2)}\n`,
+        { flag: 'wx' },
+      );
+      await this.validateDraft(stagingDirectory, packageId);
+      if (await exists(finalDirectory)) throw new Error(`Blog package ${packageId} exists; refusing overwrite.`);
+      await rename(stagingDirectory, finalDirectory);
+      return draft;
+    } catch (error: unknown) {
+      await rm(stagingDirectory, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  async readDraft(package_id: string): Promise<BlogWritingPackV2Draft> {
+    const packageId = safeSegment(package_id, 'draft package_id');
+    return this.validateDraft(inside(this.root, packageId, 'draft'), packageId);
   }
 }

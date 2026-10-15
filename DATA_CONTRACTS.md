@@ -574,6 +574,51 @@ Keyword Planner API/manual provenance remains distinct.
 
 Blog packaging is local-only and creates no provider call, retry, Attempt, Run/Job transition, or schema migration.
 
+### `BLOG_WRITING_PACK v2` draft membership (Slice 2)
+
+This additive draft format records explicitly selected accepted evidence from
+multiple completed Runs in one Workspace. It does not change the v1 contract.
+
+`assembleBlogWritingPackV2Draft` takes package identity, creation time, application
+version, and the Slice 1 selection intent (`recipe_version: 2`, `workspace_id`,
+`selections: [{run_id, job_id, artifact_id}]`). Each assembly calls the Slice 1
+resolver afresh to verify ownership, completed Run/Job/Attempt state, accepted
+artifact identity, Validation association, byte size, and SHA-256. It never selects
+a newer Run or repairs changed evidence; resolver blockers propagate to the caller.
+
+`BlogWritingPackStore.saveDraft/readDraft` stores and reads exactly one
+`BLOG_DRAFT.json` file under the existing `blog-writing-packs/<package_id>/` root:
+
+```text
+draft_version: 1
+recipe_id: BLOG_WRITING_PACK
+recipe_version: 2
+package_id, workspace_id, created_at, application_version
+state: DRAFT
+readiness_status: NOT_EVALUATED
+selected_evidence: [Slice 1 resolved evidence, in explicit selection order]
+```
+
+Each membership entry preserves `workspace_id`, `source_id`, `dataset_type`,
+`run_id`, `job_id`, the actual `attempt_id` and `validation_id`, validation status,
+`artifact_id`, SHA-256, byte size, sanitized requested context, acquisition time,
+and the resolver's observed context (currently null). `dataset_type` is the
+existing dataset identity field; no persisted `dataset_id` is invented.
+
+Membership is a snapshot: reload validates the stored format without resolving
+against current Runs. Newer Runs cannot alter it. Distinct same-family Jobs remain
+separate; exact duplicate selections and mixed Workspaces are rejected. Draft
+persistence stages and validates the file before rename and refuses existing
+package IDs, including existing v1 package IDs. It copies no raw evidence or rows.
+
+A draft has no single Run ID, coverage status, workbook, generic Data Package
+manifest, or delivery claim. Extra readiness/coverage fields are rejected. The
+v1 published-package reader does not accept drafts. Seven references do not imply
+COMPLETE; source field semantics, reporting windows, mandatory coverage, and full
+delivery validation remain unevaluated. No SQLite migration or Core lifecycle
+change is involved.
+
+
 ---
 
 ## 16. Validation findings

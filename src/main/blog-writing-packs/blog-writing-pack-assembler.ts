@@ -2,6 +2,10 @@ import type {
   JobRecord,
   RunRecord,
 } from '../../shared/run-job';
+import type { BlogWritingPackV2Draft } from '../../shared/blog-writing-pack-v2-draft';
+import type { BlogWritingPackV2SelectionIntent } from '../../shared/blog-writing-pack-v2-selection';
+import { resolveBlogWritingPackV2Selections } from './blog-writing-pack-v2-selection-resolver';
+import { parseBlogWritingPackV2Draft } from './blog-writing-pack-v2-draft';
 import {
   BLOG_WRITING_PACK_DATASETS,
   BLOG_WRITING_PACK_RECIPE_ID,
@@ -249,4 +253,29 @@ export const assembleBlogWritingPack = (input: {
       },
     },
   };
+};
+
+export const assembleBlogWritingPackV2Draft = async (
+  input: {
+    package_id: string;
+    created_at: string;
+    application_version: string;
+    selection: BlogWritingPackV2SelectionIntent;
+  },
+  dependencies: Parameters<typeof resolveBlogWritingPackV2Selections>[1],
+): Promise<BlogWritingPackV2Draft> => {
+  const snapshot = JSON.parse(JSON.stringify(input)) as typeof input;
+  const evidence = await resolveBlogWritingPackV2Selections(snapshot.selection, dependencies);
+  return parseBlogWritingPackV2Draft({
+    draft_version: 1,
+    recipe_id: 'BLOG_WRITING_PACK',
+    recipe_version: 2,
+    package_id: snapshot.package_id,
+    workspace_id: snapshot.selection.workspace_id,
+    created_at: snapshot.created_at,
+    application_version: snapshot.application_version,
+    state: 'DRAFT',
+    readiness_status: 'NOT_EVALUATED',
+    selected_evidence: evidence,
+  });
 };
