@@ -12,12 +12,21 @@ export interface BlogWritingPackV2DatasetRequirements {
   readonly required_source_changes: readonly string[];
 }
 
+export interface BlogWritingPackV2KeywordPlannerScope {
+  readonly requested_date_start: string;
+  readonly requested_date_end: string;
+  readonly country_code: string;
+  readonly language_code: string;
+  readonly keyword_plan_network: string;
+}
+
 // Empty lists declare no additional checks; they do not approve downstream semantics.
 export interface BlogWritingPackV2Requirements {
   readonly requirements_version: 1;
   readonly recipe_version: 2;
   readonly datasets: Partial<Record<BlogWritingPackV2MandatoryDataset, BlogWritingPackV2DatasetRequirements>>;
   readonly gsc_requested_dates: { readonly start_date: string; readonly end_date: string } | null;
+  readonly keyword_planner_scope?: BlogWritingPackV2KeywordPlannerScope | null;
   readonly ads_requested_dates?: { readonly start_date: string; readonly end_date: string } | null;
 }
 
@@ -28,14 +37,15 @@ export const BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS: BlogWritingPackV2Require
   datasets: {
     SEARCH_TERMS: { open_decisions: ['reporting_window'], required_source_changes: [] },
     QUERY_PAGE: { open_decisions: [], required_source_changes: [] },
-    KEYWORD_HISTORICAL_METRICS: { open_decisions: ['keyword_identity', 'historical_scope'], required_source_changes: [] },
-    PRODUCTS: { open_decisions: ['category', 'price', 'availability', 'stock_status', 'product_status', 'freshness'], required_source_changes: [] },
+    KEYWORD_HISTORICAL_METRICS: { open_decisions: ['historical_scope'], required_source_changes: [] },
+    PRODUCTS: { open_decisions: ['category', 'price', 'availability', 'freshness'], required_source_changes: ['stock_status', 'product_status', 'currency_context'] },
     SITEMAP_URLS: { open_decisions: ['scope', 'freshness'], required_source_changes: ['page_type', 'title', 'status'] },
     GOOGLE_SERP: { open_decisions: ['capture_date', 'freshness'], required_source_changes: [] },
     GA4_CONTENT_PERFORMANCE: { open_decisions: ['users', 'average_engagement_time', 'reporting_window'], required_source_changes: ['average_engagement_time'] },
   },
   gsc_requested_dates: null,
   ads_requested_dates: null,
+  keyword_planner_scope: null,
 };
 
 export type BlogWritingPackV2BlockerCode =
@@ -45,7 +55,7 @@ export type BlogWritingPackV2BlockerCode =
 
 export interface BlogWritingPackV2FieldObservation {
   field: string;
-  status: 'OBSERVED' | 'NULL' | 'ABSENT' | 'UNRESOLVED';
+  status: 'OBSERVED' | 'NULL' | 'ABSENT' | 'UNRESOLVED' | 'UNSUPPORTED';
   observed_count: number;
   null_count: number;
   absent_count: number;

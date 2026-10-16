@@ -119,10 +119,10 @@ test('Ads endpoints remain open even if callers clear decision lists; invalid or
   await assert.rejects(f.evaluate(profile), /Ads|requirements/);
 });
 
-test('J: present other families cannot claim compliance through empty requirement lists', async () => {
+test('J: two unimplemented families cannot claim compliance through empty requirement lists', async () => {
   const f = fixture(); await f.persist(families.map(([s, d], i) => f.add(`other_${i}`, s, d)));
   const result = await f.evaluate();
-  for (const [, dataset] of families.slice(2)) assert.ok(result.blockers.some((b) => b.dataset_type === dataset && b.requirement_id === 'field_compliance' && b.code === 'DECISION_REQUIRED'));
+  for (const [, dataset] of families.slice(5)) assert.ok(result.blockers.some((b) => b.dataset_type === dataset && b.requirement_id === 'field_compliance' && b.code === 'DECISION_REQUIRED'));
   assert.equal(result.coverage_status, 'PARTIAL');
   assert.equal(result.delivery_readiness, 'NOT_EVALUATED');
   assert.equal(BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS.ads_requested_dates, null);

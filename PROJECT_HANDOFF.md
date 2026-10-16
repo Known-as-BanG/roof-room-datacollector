@@ -1,11 +1,11 @@
 # RoofRoom Data Collector — Project Handoff
 
-**Checkpoint date:** 2026-10-15
+**Checkpoint date:** 2026-10-16
 **Current branch:** `feat/google-analytics-4-source-v1`
-**Production implementation checkpoint:** Blog v2 Slices 1–2 and 3B.1–3B.2A checkpoint on `feat/google-analytics-4-source-v1` (baseline `218d56c`)
-**Repository state:** Blog v2 selection, immutable draft membership, explicit-requirements evaluation and Ads/GSC field checks are included in this checkpoint; existing `reports/` is preserved outside Git
-**Current stage:** field compliance 13/13, readiness 10/10, Slice 1 7/7, Slice 2 8/8; relevant adapters, loader, v1 gate, TypeScript, lint and diff checks passed locally
-**Current action:** review Slice 3B.2A; approve Ads reporting window and exact GSC endpoints, then separately address the remaining five mandatory families before full Blog v2 compliance or delivery
+**Production implementation checkpoint:** Blog v2 through Slices 3B.2B.1–3B.2B.3 on `feat/google-analytics-4-source-v1` (baseline `a99beaf`)
+**Repository state:** this checkpoint includes Keyword Planner, İkas Products and Sitemap compliance together with their shared evaluator and fixtures; existing `reports/` is preserved outside Git
+**Current stage:** Sitemap 12/12, İkas 13/13, KWP 14/14, readiness 10/10, Ads/GSC 13/13, selection 7/7 and draft 8/8; source/parser, loader, v1, TypeScript, lint and diff gates passed locally
+**Current action:** resolve the documented approval/source gaps before claiming full Blog v2 compliance or delivery; Sitemap page_type/title/page-status and site completeness remain blocked, alongside product/KWP/Ads/GSC gaps. SERP and GA4 are unchecked
 
 ---
 
@@ -261,6 +261,30 @@ families remain explicitly unresolved even if a caller clears decision lists.
 Frozen drafts, source verdicts and v1 remain unchanged. This slice includes no
 live, packaged, publication or production-data acceptance. Execution record:
 `docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-ads-gsc-compliance.md`.
+
+Slice 3B.2B.1 adds source-backed Keyword Planner API/manual CSV field inspection
+through the same evaluator and accepted-artifact seam. Provider-observed identity,
+raw presence, history, currency units and competition category/index stay distinct.
+Explicit Blog scope never inherits the acquisition path's 12-month constraint.
+API currency, manual structured request scope and Blog keyword completeness remain
+explicit blockers; no acquisition change or real-data acceptance is included.
+Execution record: `docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-keyword-planner-compliance.md`.
+
+Slice 3B.2B.2 adds accepted İkas workbook inspection and mapped-column metadata
+without changing existing normalized rows or import acquisition. Product-group
+identity, variant granularity and observed name/URL remain intact; category,
+product price/availability, stock/lifecycle status, currency and freshness gaps
+remain explicit. No URLs, product states, prices or timestamps are reconstructed.
+Keyword Planner compliance is included in the same checkpoint. Execution record:
+`docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-ikas-compliance.md`.
+
+Slice 3B.2B.3 adds Sitemap URL field inspection above unchanged XML acquisition
+and parsing. URL sets establish observed loc values; indexes retain child-document
+identity without implying webpage inventory. Page type, title and per-page HTTP
+status remain explicit source gaps; document HTTP success/lastmod are not reused
+as page observations. Site completeness remains a decision even for one Job.
+KWP/İkas compliance is included in the same checkpoint. Execution record:
+`docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-sitemap-compliance.md`.
 
 ---
 

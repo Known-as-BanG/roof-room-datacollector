@@ -618,7 +618,7 @@ COMPLETE; source field semantics, reporting windows, mandatory coverage, and ful
 delivery validation remain unevaluated. No SQLite migration or Core lifecycle
 change is involved.
 
-### `BLOG_WRITING_PACK v2` explicit readiness evaluation (Slices 3B.1–3B.2A)
+### `BLOG_WRITING_PACK v2` explicit readiness evaluation (Slices 3B.1–3B.2B.3)
 
 `evaluateBlogWritingPackV2Readiness({package_id, workspace_id, requirements},
 {store, repository, loader})` reads `BLOG_DRAFT.json` through `readDraft` and
@@ -659,10 +659,10 @@ seven families satisfy the explicit supported requirements with no mandatory
 blocker. Every result includes `coverage_scope: EXPLICIT_REQUIREMENTS_ONLY`, the
 requirements snapshot and unchanged selected provenance, and
 `delivery_readiness: NOT_EVALUATED`. It does not claim full downstream delivery.
-Empty decision lists cannot approve unchecked families: selected Keyword Planner,
-Products, Sitemap, SERP, and GA4 families retain DECISION_REQUIRED for
+Empty decision lists cannot approve unchecked families: selected SERP
+and GA4 families retain DECISION_REQUIRED for
 `field_compliance` until their separate slices are implemented; absent families
-remain MISSING. Thus this slice cannot produce full Blog v2 COMPLETE coverage.
+remain MISSING. The implemented slices cannot produce full Blog v2 COMPLETE coverage.
 
 `BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS` records current real open decisions
 and known source gaps, with no automatic date or metric defaults. Using it cannot
@@ -673,7 +673,7 @@ DATASET_MISSING, DECISION_REQUIRED, SOURCE_CHANGE_REQUIRED, WINDOW_MISMATCH,
 EVIDENCE_INVALID, ARTIFACT_INTEGRITY_FAILED, MEMBERSHIP_CHANGED, FIELD_ABSENT,
 FIELD_OBSERVATION_REQUIRED, and FIELD_REPRESENTATION_INVALID.
 
-For Ads/GSC only, the evaluator uses the existing loader's verified byte-read
+For implemented families, the evaluator uses the existing loader's verified byte-read
 capability (`readAcceptedJobArtifact`) and existing source normalizers with
 source-local raw field-presence inspection. The read rechecks accepted ownership,
 size, SHA-256 and frozen artifact/context references. Invalid representations
@@ -697,15 +697,202 @@ remain separate from provider row values; the existing exact 28-day check applie
 
 Read-only `field_checks` contain per-selection IDs, row counts and field counts
 (observed, normalized null from present fields, absent); they contain no business row values. Field
-status is OBSERVED, NULL, ABSENT or UNRESOLVED (no rows). A missing raw property
+status is OBSERVED, NULL, ABSENT, UNRESOLVED (empty or semantically unresolved),
+or UNSUPPORTED (an explicit source capability gap). A missing raw property
 cannot become observed merely because normalization emits null. Explicit
 source-compatible nulls and zeros remain distinct. Existing legacy/GSC empty-string
 to null normalization is retained; it never proves an absent raw property. Incompatible source shapes
 or values produce FIELD_REPRESENTATION_INVALID; absent fields produce FIELD_ABSENT;
 empty rows produce FIELD_OBSERVATION_REQUIRED. The inspector separately reports
-UNSUPPORTED for source families outside its Ads/GSC implementation. NO_DATA and
+UNSUPPORTED for source families outside its Ads/GSC/Keyword Planner/İkas/Sitemap implementation. NO_DATA and
 LOW_DATA retain their original verdict, coverage decision blocker, and independent
 window/field checks. Draft bytes, source validators and v1 export behavior are unchanged.
+
+
+### `BLOG_WRITING_PACK v2` Keyword Planner compliance (Slice 3B.2B.1)
+
+The existing evaluator checks selected `google-keyword-planner` (OFFICIAL_API)
+and `google-keyword-planner-csv` (FILE_IMPORT) artifacts through the same frozen
+membership and accepted-byte integrity seam. Provider parsing, source-context
+validation and raw field presence live in `keyword-planner-field-inspector.ts`;
+the Blog helper owns only downstream aliases and the existing field-count summary.
+No source acquisition, parser behavior, loader API or draft format is changed.
+
+Required mappings:
+
+| Blog field | Official API | Manual CSV |
+| --- | --- | --- |
+| keyword | result.text → returned_keyword | Keyword column → returned_keyword |
+| average_monthly_searches | keywordMetrics.avgMonthlySearches → avg_monthly_searches | Avg. monthly searches → avg_monthly_searches |
+| competition | keywordMetrics.competition (category) | Competition column (native localized category) |
+| top_of_page_bid_low | lowTopOfPageBidMicros / 1,000,000 | Top of page bid (low range), already currency units |
+| top_of_page_bid_high | highTopOfPageBidMicros / 1,000,000 | Top of page bid (high range), already currency units |
+
+Competition index remains a separate observation and never supplies competition.
+Known API LOW/MEDIUM/HIGH categories remain native; other non-null categories
+require `competition_semantics` approval, without translating or inventing values.
+CSV native categories are preserved without translation. API requested_keyword,
+returned_keyword, explicit close variants and matched-request observations remain
+separate through the existing normalizer. Missing/null/blank provider identity
+produces FIELD_OBSERVATION_REQUIRED (`observed_keyword`), never a request fallback.
+Unproven/ambiguous request mappings or unsupported raw shapes fail normalization
+and produce FIELD_REPRESENTATION_INVALID. The CSV parser's requested_keyword alias
+comes from the provider Keyword cell; it is not proof of a reviewed request set.
+
+API raw presence proves each required metric property independently of normalized
+nulls. Absent properties produce FIELD_ABSENT. Explicit nulls remain null; real
+zeros remain zero. Successful fixed-header and complete-row CSV parsing proves
+column presence, with blank cells retaining existing null semantics. Missing
+headers/partial rows fail the existing parser. Original monthly histories remain
+unchanged, including missing/null observations; no months, averages or history
+are reconstructed. Duplicate provider rows and Jobs are never merged/deduplicated.
+
+Optional `keyword_planner_scope` in the version-1 requirements profile specifies
+`requested_date_start`, `requested_date_end`, `country_code`, `language_code`,
+and `keyword_plan_network`, or null. Unknown keys/invalid or reversed dates are
+rejected. Dates have no Blog duration default. Missing scope stays
+DECISION_REQUIRED even if family decision lists are empty; approved fields are
+compared exactly against each verified API Job's requested context, producing
+WINDOW_MISMATCH on disagreement. Open decision lists still require explicit
+resolution by the caller. The API context's existing 12-complete-month TR/tr/
+GOOGLE_SEARCH constraint validates acquisition compatibility only; it does not
+approve a Blog historical requirement or imply observed completeness.
+
+Missing/incompatible source request context produces EVIDENCE_INVALID
+(`keyword_planner_request_context`). Manual inspection validates sanitized source,
+task and FILE_IMPORT mode and reads only accepted bytes, never the original
+file_path. The CSV date label/monthly columns do not prove requested geographical,
+language or network scope: DECISION_REQUIRED (`manual_csv_scope`) remains. API
+artifacts do not capture observed account currency: SOURCE_CHANGE_REQUIRED
+(`currency_context`) remains; never infer currency from TR or assume micros
+means a particular currency. Manual currency is preserved from each provider row.
+No acquisition extension is authorized by this slice.
+
+The required Blog keyword set/completeness policy is unspecified: all selected
+KWP evidence retains DECISION_REQUIRED (`keyword_coverage`), including one Job.
+Multiple Jobs retain independent selected provenance and field counts plus the
+existing `multi_job_coverage` blocker. LOW_DATA/NO_DATA retain their verdict and
+coverage decision, with independent scope/field checks; empty rows cannot prove
+fields even under VALID. These gaps prevent mandatory KWP coverage from passing
+in this slice despite successful field inspection. Delivery stays NOT_EVALUATED;
+EXPLICIT_REQUIREMENTS_ONLY and NOT_READY/PARTIAL/COMPLETE remain unchanged.
+
+
+### `BLOG_WRITING_PACK v2` İkas Products compliance (Slice 3B.2B.2)
+
+The existing evaluator reads selected accepted İkas XLSX bytes through unchanged
+Slice 1 identity/integrity and frozen draft checks. İkas-local
+`inspectIkasProductsFields` reuses `parseIkasProductsXlsx`. The parser adds
+`mapped_fields` metadata identifying actual matched columns, without changing
+row normalization, validation, units, header aliases or raw bytes. A null-filled
+optional URL is not evidence that a URL column existed. Inspection validates
+sanitized source/task/FILE_IMPORT context; it never reopens the original file_path.
+
+| Blog field | Actual supported import/normalization | Compliance and follow-up |
+| --- | --- | --- |
+| product_id | Product ID / Ürün Grup ID / existing ID aliases → product_id | Actual group identity only; no variant/name/URL fallback. Blank is null and blocked; missing required ID header fails parsing. |
+| product_name | Product title / İsim / existing title aliases → product_title | Alias to product_name; blank stays null with observation blocker. No slug/name reconstruction. |
+| product_url | Existing URL / Product URL / Ürün URL aliases → url | Alias only when present; no URL construction. Absent header versus blank cell stays distinct. Invalid/non-HTTP(S) URL representations block. Missing source URL requires separate evidence/import support. |
+| category | Categories / Kategoriler, Categories / product type / Kategori, Product type / Tip | Native strings remain separate; no category ID/hierarchy interpretation, delimiter splitting, primary-category choice or singular alias. DECISION_REQUIRED. |
+| price | Price / Fiyat / Satış Fiyatı → price; Sale price aliases → separate sale_price | Existing numeric parsing and per-variant rows retained, including null/zero; no product-price selection, minimum, aggregation or sale/list equivalence. DECISION_REQUIRED for Blog price meaning. |
+| availability | Existing normalized availability derivation from deleted, variant_active, stock and continue_selling | Native derived variant value retained; product-level meaning unresolved. A direct raw availability column is currently replaced by the legacy derivation and cannot be treated as preserved direct product availability. DECISION_REQUIRED. |
+| stock_status | Numeric stock is an independent observation; no approved product stock-status mapping | UNSUPPORTED / SOURCE_CHANGE_REQUIRED. Never inferred from availability or fabricated as zero. |
+| product_status | Native deleted/variant-active/channel flags remain independent | No approved product lifecycle/publication mapping: UNSUPPORTED / SOURCE_CHANGE_REQUIRED. No fabricated active/draft/archive/publication state. |
+
+Currency is not mapped by the existing import parser. Monetary numbers retain
+imported units without scaling, currency conversion or assumed currency.
+SOURCE_CHANGE_REQUIRED (`currency_context`) remains. Any supported currency,
+stock-status or product-status extension requires a separate source/import-schema
+contract; no provider acquisition or import schema extension was made here.
+
+Read-only field reports retain existing observed/null/absent counts and introduce
+UNSUPPORTED for known capability gaps. UNRESOLVED distinguishes present native
+values from unapproved downstream meaning; no singular category value is emitted.
+Native price/availability counts do not claim approved product-level semantics.
+Missing required observations use FIELD_OBSERVATION_REQUIRED. Absent supported
+columns use FIELD_ABSENT. Invalid workbook, IDs/schema, numeric observations or
+URL representations use FIELD_REPRESENTATION_INVALID. Incompatible import context
+uses EVIDENCE_INVALID (`ikas_request_context`). Safe messages contain no provider
+rows or original import paths. Existing source validator verdicts are not modified.
+
+The artifact's acquired_at remains acquisition provenance. The parser has no
+approved provider observation timestamp; created-date-like columns are not a
+snapshot timestamp mapping. DECISION_REQUIRED (`freshness`) remains even if a
+caller empties decision lists. No maximum age, timezone or reference-date policy
+is invented, and acquisition time is never promoted to provider observation time.
+
+Repeated products/variants, duplicate rows and independently selected Jobs stay
+separate with exact Run/Job/Attempt/Validation/Artifact references. No merge,
+deduplication, newer-Run selection or draft write occurs. Multi-Job coverage stays
+explicitly unresolved. Existing LOW_DATA/NO_DATA decisions remain independent;
+empty unsupported workbooks fail parsing and cannot prove mandatory fields.
+
+Product coverage remains BLOCKED on these semantic/source gaps. The current
+profile records category/price/availability/freshness as open decisions and
+stock_status/product_status/currency_context as source changes. SERP and
+GA4 remain outside field implementation; KWP and Ads/GSC behavior is unchanged.
+EXPLICIT_REQUIREMENTS_ONLY, NOT_READY/PARTIAL/COMPLETE and delivery
+NOT_EVALUATED remain unchanged. No complete Blog v2 readiness is claimed.
+
+
+### `BLOG_WRITING_PACK v2` Sitemap compliance (Slice 3B.2B.3)
+
+The existing readiness evaluator inspects accepted `bitkimark-sitemap` XML through
+unchanged selection/draft/identity/integrity checks. Source-local
+`inspectSitemapFields` reuses `createBitkimarkSitemapJobContext` and
+`parseBitkimarkSitemap`. The existing parser, request construction, source fetch,
+verified host/document allowlist and validator are unchanged. Only selected
+accepted bytes are inspected; no discovery, traversal, crawl or page fetch occurs.
+
+| Blog field | Existing raw/normalized evidence | Compliance |
+| --- | --- | --- |
+| url | Direct loc → url, preserving the parser's raw trimmed loc and existing URL validation | URL_SET/entry_type URL establishes observed webpage URL. Index entry loc identifies a child sitemap, not a webpage. Missing/blank/malformed loc fails parsing; no requested URL substitution. |
+| page_type | No normalized classification observation | UNSUPPORTED / SOURCE_CHANGE_REQUIRED; URL patterns, document kind and existing local annotations are not page classification. |
+| title | No suitable normalized webpage title observation | UNSUPPORTED / SOURCE_CHANGE_REQUIRED; no slug/product-name reconstruction or promotion of unrelated XML metadata to HTML title. |
+| status | Source observes the sitemap document response status only | UNSUPPORTED / SOURCE_CHANGE_REQUIRED for individual-page HTTP status. No copied 200, inferred availability or missing-to-zero conversion. |
+
+A selected URL_SET may pass the url field while the dataset remains BLOCKED.
+SITEMAP_INDEX rows retain `entry_type: SITEMAP` and `document_kind: SITEMAP_INDEX`;
+url is UNRESOLVED for the Blog webpage requirement, with DECISION_REQUIRED
+(`sitemap_document_kind`) plus observation blocker. Index URLs remain visible as
+child-document evidence; none are manufactured into pages or fetched automatically.
+The existing verified-child allowlist remains enforced.
+
+Per-document duplicate loc rejection is unchanged; no duplicates are silently
+removed. Equal URLs in separate Jobs/Runs remain independent rows and field
+summaries, with all original Run/Job/Attempt/Validation/Artifact references.
+DECISION_REQUIRED (`scope`) remains even with one Job or empty decision lists:
+one document or a union of selected documents does not prove complete website
+inventory. Existing multi_job_coverage, warning-outcome and real-profile freshness
+decisions remain unresolved; no new completeness/freshness policy is invented.
+
+Optional lastmod remains the source-provided validated ISO value or null when
+absent/empty. It is not page HTTP status, live update proof or acquisition time.
+The existing parser does not normalize changefreq/priority; those XML values
+remain only in immutable raw evidence and are not interpreted as observed update
+frequency or quality. Existing URL-derived annotations remain local annotations,
+not provider page types or titles. XML title-like elements have no approved title
+mapping in this source.
+
+Normalized source_url, parent_sitemap_url, document_kind, entry_type and retrieved_at
+match the existing accepted loader's representation. The evaluator supplies the
+frozen artifact acquired_at as retrieved_at, explicitly acquisition provenance;
+no provider page-observation timestamp or current-time fallback is invented.
+Frozen requested_context, observed_context and membership remain unchanged.
+
+Existing blocker codes are reused: FIELD_REPRESENTATION_INVALID for unsupported
+XML/loc/metadata; EVIDENCE_INVALID (`sitemap_request_context`) for unsupported
+source/task/request context; FIELD_OBSERVATION_REQUIRED for empty/unproven URL
+observations; SOURCE_CHANGE_REQUIRED for page_type/title/status; DECISION_REQUIRED
+for scope/index meaning. Existing integrity/membership/validation-outcome blockers
+remain. Empty VALID/NO_DATA/LOW_DATA never prove observed URL or full coverage.
+Safe field results contain counts and fixed conditions, without provider rows.
+
+Follow-up needs separately approved page-type evidence/rules, actual page-title
+observations and per-page HTTP status acquisition, plus site-scope/completeness
+and any required freshness decisions. This slice implements none of those source
+extensions. Delivery remains NOT_EVALUATED, with EXPLICIT_REQUIREMENTS_ONLY and
+NOT_READY/PARTIAL/COMPLETE unchanged. Full Blog v2 delivery is not established.
 
 ---
 

@@ -89,15 +89,17 @@ test('newer Runs do not change membership or draft bytes; provenance changes blo
   assert.deepEqual(fs.readFileSync(filename), before);
 });
 
-test('an empty synthetic profile cannot approve the five unimplemented families, with no delivery claim', async () => {
+test('a synthetic profile cannot approve two unchecked families or the implemented families remaining source and scope gaps', async () => {
   const f = fixture(); const draft = await f.persist(families.map(([source, type], i) => f.add(`family_${i}`, source, type)));
   const requirements = syntheticRequirements();
   const result = await f.evaluate(requirements);
   assert.equal(result.coverage_status, 'PARTIAL');
   assert.equal(result.coverage_scope, 'EXPLICIT_REQUIREMENTS_ONLY');
   assert.equal(result.delivery_readiness, 'NOT_EVALUATED');
-  assert.equal(result.blockers.length, 5);
-  assert.ok(result.blockers.every((b) => b.code === 'DECISION_REQUIRED' && b.requirement_id === 'field_compliance'));
+  assert.equal(result.blockers.length, 15);
+  assert.equal(result.blockers.filter((b) => b.code === 'DECISION_REQUIRED' && b.requirement_id === 'field_compliance').length, 2);
+  assert.ok(result.blockers.some((b) => b.code === 'SOURCE_CHANGE_REQUIRED' && b.requirement_id === 'currency_context'));
+  assert.ok(result.blockers.some((b) => b.requirement_id === 'keyword_coverage'));
   assert.deepEqual(result.requirements, requirements);
   assert.deepEqual(result.selected_evidence, draft.selected_evidence);
   assert.equal((await f.store.readDraft('draft')).readiness_status, 'NOT_EVALUATED');
