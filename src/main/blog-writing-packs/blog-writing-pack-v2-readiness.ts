@@ -1,4 +1,6 @@
 import { SitemapContextError } from '../sources/bitkimark/bitkimark-sitemap-field-inspector';
+import { SerpApiContextError, SERP_SNAPSHOT_OPEN_REQUIREMENTS } from '../sources/serpapi/serpapi-field-inspector';
+import { GoogleAnalytics4EvidenceError } from '../sources/google-analytics-4/google-analytics-4-field-inspector';
 import { IkasProductsContextError } from '../sources/ikas/ikas-products-field-inspector';
 import { KeywordPlannerEvidenceError } from '../sources/google-ads/keyword-planner-field-inspector';
 import { isDeepStrictEqual } from 'node:util';
@@ -33,7 +35,7 @@ const dateValue = (value: unknown): number => {
 const snapshotRequirements = (input: BlogWritingPackV2Requirements): BlogWritingPackV2Requirements => {
   const value: unknown = JSON.parse(JSON.stringify(input));
   if (
-    !isRecord(value) || !exactKeys(value, ['requirements_version', 'recipe_version', 'datasets', 'gsc_requested_dates', ...['ads_requested_dates', 'keyword_planner_scope'].filter((key) => Object.hasOwn(value, key))])
+    !isRecord(value) || !exactKeys(value, ['requirements_version', 'recipe_version', 'datasets', 'gsc_requested_dates', ...['ads_requested_dates', 'keyword_planner_scope', 'ga4_requested_dates'].filter((key) => Object.hasOwn(value, key))])
     || value.requirements_version !== 1 || value.recipe_version !== 2 || !isRecord(value.datasets)
   ) throw new Error('Blog v2 requirements profile is invalid.');
   for (const [dataset, requirements] of Object.entries(value.datasets)) {
@@ -62,6 +64,12 @@ const snapshotRequirements = (input: BlogWritingPackV2Requirements): BlogWriting
     || dateValue(scope.requested_date_end) < dateValue(scope.requested_date_start)
     || !['country_code', 'language_code', 'keyword_plan_network'].every((key) => typeof scope[key] === 'string' && (scope[key] as string).trim().length > 0)
   )) throw new Error('Blog v2 Keyword Planner requirements scope is invalid.');
+  const ga4Dates = value.ga4_requested_dates;
+  if (ga4Dates !== null && ga4Dates !== undefined && (
+    !isRecord(ga4Dates) || !exactKeys(ga4Dates, ['start_date', 'end_date'])
+    || !Number.isFinite(dateValue(ga4Dates.start_date)) || !Number.isFinite(dateValue(ga4Dates.end_date))
+    || dateValue(ga4Dates.end_date) < dateValue(ga4Dates.start_date)
+  )) throw new Error('Blog v2 GA4 requirements must specify valid ordered calendar endpoints.');
   return value as unknown as BlogWritingPackV2Requirements;
 };
 
@@ -122,7 +130,7 @@ export const evaluateBlogWritingPackV2Readiness = async (
   }
 
   for (const evidence of verified) {
-    if (!['SEARCH_TERMS', 'QUERY_PAGE', 'KEYWORD_HISTORICAL_METRICS', 'PRODUCTS', 'SITEMAP_URLS'].includes(evidence.dataset_type)) continue;
+    if (!['SEARCH_TERMS', 'QUERY_PAGE', 'KEYWORD_HISTORICAL_METRICS', 'PRODUCTS', 'SITEMAP_URLS', 'GOOGLE_SERP', 'GA4_CONTENT_PERFORMANCE'].includes(evidence.dataset_type)) continue;
     try {
       const loaded = await dependencies.loader.readAcceptedJobArtifact(evidence.run_id, evidence.job_id);
       if (loaded.artifact.artifact_id !== evidence.artifact_id || loaded.artifact.sha256 !== evidence.artifact_sha256
@@ -132,10 +140,21 @@ export const evaluateBlogWritingPackV2Readiness = async (
         continue;
       }
       const inspected = inspectBlogWritingPackV2Fields(evidence.source_id,
-        ['KEYWORD_HISTORICAL_METRICS', 'PRODUCTS', 'SITEMAP_URLS'].includes(evidence.dataset_type) ? loaded.bytes
+        ['KEYWORD_HISTORICAL_METRICS', 'PRODUCTS', 'SITEMAP_URLS', 'GOOGLE_SERP', 'GA4_CONTENT_PERFORMANCE'].includes(evidence.dataset_type) ? loaded.bytes
           : JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(loaded.bytes)), loaded.requested_context, evidence.acquired_at);
       field_checks.push({ run_id: evidence.run_id, job_id: evidence.job_id, artifact_id: evidence.artifact_id,
-        dataset_type: evidence.dataset_type, row_count: inspected.rows.length, fields: inspected.fields });
+        dataset_type: evidence.dataset_type, row_count: inspected.rows.length, fields: inspected.fields,
+        ...(inspected.serp_provenance ? { serp_provenance: inspected.serp_provenance } : {}),
+        ...(inspected.ga4_context ? { ga4_context: inspected.ga4_context } : {}) });
+      for (const issue of inspected.ga4_issues ?? []) {
+        add(evidence.dataset_type, [evidence], issue.code, issue.requirement_id, 'Approved provider-backed Content Performance meaning and scope',
+          issue.actual, 'Resolve the exact GA4 source or semantic gap without substituting metrics or reconstructing observations.');
+      }
+      for (const field of inspected.serp_missing_observations ?? []) {
+        add(evidence.dataset_type, [evidence], 'FIELD_OBSERVATION_REQUIRED', field,
+          'An actual nonblank provider result observation or existing observed-link domain mapping',
+          'A required result observation is null or blank.', 'Select compatible evidence without constructing missing titles, URLs or domains.');
+      }
       for (const limitation of inspected.limitations) {
         add(evidence.dataset_type, [evidence], limitation === 'currency_context' ? 'SOURCE_CHANGE_REQUIRED' : 'DECISION_REQUIRED',
           limitation, 'Established provider-native meaning and context',
@@ -153,16 +172,27 @@ export const evaluateBlogWritingPackV2Readiness = async (
           issue.actual, 'Resolve this Sitemap evidence/source gap in a separately approved follow-up.');
       }
       for (const field of inspected.fields) {
+        if (evidence.dataset_type === 'GOOGLE_SERP' && field.field === 'capture_date') continue;
         if (evidence.dataset_type === 'SITEMAP_URLS' && field.status === 'UNSUPPORTED') continue;
         if (evidence.dataset_type === 'PRODUCTS' && ['UNRESOLVED', 'UNSUPPORTED'].includes(field.status)) continue;
         if (field.status === 'ABSENT' || field.status === 'UNRESOLVED') {
           add(evidence.dataset_type, [evidence], field.status === 'ABSENT' ? 'FIELD_ABSENT' : 'FIELD_OBSERVATION_REQUIRED',
             field.field, 'Supported field actually present in source rows, including legitimate explicit null',
-            field.status === 'ABSENT' ? `Absent in ${field.absent_count} source rows.` : 'No rows establish field observation.',
+            field.status === 'ABSENT' ? `Absent in ${field.absent_count} source rows.` : 'Source observations do not establish complete field compliance.',
             'Select compatible evidence; do not fill absent fields with zeros or reconstructed values.');
         }
       }
     } catch (error: unknown) {
+      if (error instanceof GoogleAnalytics4EvidenceError) {
+        add(evidence.dataset_type, [evidence], error.code, error.requirement_id, 'Compatible frozen GA4 Content Performance request context',
+          'Selected property, report or requested window is incompatible.', 'Inspect the exact selected evidence without changing its context or raw bytes.');
+        continue;
+      }
+      if (error instanceof SerpApiContextError) {
+        add(evidence.dataset_type, [evidence], 'EVIDENCE_INVALID', 'serp_request_context', 'Valid accepted SERP THIRD_PARTY_API context',
+          'Source/task/request scope is incompatible.', 'Inspect the selected context without substituting query or search scope.');
+        continue;
+      }
       if (error instanceof SitemapContextError) {
         add(evidence.dataset_type, [evidence], 'EVIDENCE_INVALID', 'sitemap_request_context', 'Valid accepted Sitemap HTTP_XML context',
           'Source/task/request scope is incompatible.', 'Inspect the exact selected context; do not substitute requested scope or a newer Run.');
@@ -208,9 +238,11 @@ export const evaluateBlogWritingPackV2Readiness = async (
           'Current source capability is insufficient.', 'Implement and verify a separately approved source extension.');
       }
     }
-    if (evidence.length > 0 && !['SEARCH_TERMS', 'QUERY_PAGE', 'KEYWORD_HISTORICAL_METRICS', 'PRODUCTS', 'SITEMAP_URLS'].includes(dataset_type)) {
-      add(dataset_type, evidence, 'DECISION_REQUIRED', 'field_compliance', 'Verified downstream field semantics for this family',
-        'Field compliance is outside the implemented Ads/GSC slice.', 'Resolve and implement this family in a separately approved slice.');
+    if (dataset_type === 'GOOGLE_SERP' && evidence.length > 0) {
+      for (const [requirement_id, actual] of Object.entries(SERP_SNAPSHOT_OPEN_REQUIREMENTS)) {
+        add(dataset_type, evidence, 'DECISION_REQUIRED', requirement_id, 'Explicit approved Blog SERP semantics and scope', actual,
+          'Approve the exact unresolved requirement before coverage can pass; preserve all source observations and provenance.');
+      }
     }
     if (dataset_type === 'SITEMAP_URLS' && evidence.length > 0) {
       add(dataset_type, evidence, 'DECISION_REQUIRED', 'scope', 'An approved Sitemap selection and website inventory coverage rule',
@@ -247,6 +279,22 @@ export const evaluateBlogWritingPackV2Readiness = async (
       add(dataset_type, evidence, 'DECISION_REQUIRED', 'multi_job_coverage', 'Source-specific explicit multi-Job coverage rules',
         'Multiple selected Jobs; overlap and completeness are not evaluated in this slice.',
         'Define the required source-specific scopes; retain each selected identity separately.');
+    }
+    if (dataset_type === 'GA4_CONTENT_PERFORMANCE') {
+      const dates = requirements.ga4_requested_dates;
+      if (dates === null || dates === undefined) {
+        add(dataset_type, evidence, 'DECISION_REQUIRED', 'ga4_requested_dates', 'Explicit approved Content Performance endpoints',
+          'No approved endpoints supplied.', 'Approve exact dates without inheriting Paid Funnel or a default duration.');
+      } else {
+        for (const item of evidence.filter((candidate) => verified.has(candidate))) {
+          const context = isRecord(item.requested_context) ? item.requested_context : {};
+          if (context.start_date !== dates.start_date || context.end_date !== dates.end_date) {
+            add(dataset_type, [item], 'WINDOW_MISMATCH', 'ga4_requested_dates', 'Exact approved requested calendar endpoints',
+              'Selected Content Performance requested dates differ from the approved window.',
+              'Select compatible evidence; do not combine windows or reconstruct aggregate metrics.');
+          }
+        }
+      }
     }
     if (dataset_type === 'QUERY_PAGE' || dataset_type === 'SEARCH_TERMS') {
       const gsc = dataset_type === 'QUERY_PAGE';

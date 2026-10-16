@@ -134,7 +134,7 @@ const requireIsoDate = (
   return value;
 };
 
-const requireJobContext = (
+export const requireJobContext = (
   value: unknown,
 ): GoogleAnalytics4RequestContext => {
   if (!isRecord(value)) {
@@ -354,7 +354,7 @@ const requirePageRows = (
   return body.rows;
 };
 
-const requireRawBundle = (
+export const requireRawBundle = (
   value: unknown,
   jobContext: {
     dataset_type: GoogleAnalytics4DatasetType;

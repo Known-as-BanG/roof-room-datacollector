@@ -119,10 +119,11 @@ test('Ads endpoints remain open even if callers clear decision lists; invalid or
   await assert.rejects(f.evaluate(profile), /Ads|requirements/);
 });
 
-test('J: two unimplemented families cannot claim compliance through empty requirement lists', async () => {
+test('J: GA4 source and semantic gaps cannot pass through empty requirement lists', async () => {
   const f = fixture(); await f.persist(families.map(([s, d], i) => f.add(`other_${i}`, s, d)));
   const result = await f.evaluate();
-  for (const [, dataset] of families.slice(5)) assert.ok(result.blockers.some((b) => b.dataset_type === dataset && b.requirement_id === 'field_compliance' && b.code === 'DECISION_REQUIRED'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'users' && b.code === 'SOURCE_CHANGE_REQUIRED'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'average_engagement_time' && b.code === 'DECISION_REQUIRED'));
   assert.equal(result.coverage_status, 'PARTIAL');
   assert.equal(result.delivery_readiness, 'NOT_EVALUATED');
   assert.equal(BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS.ads_requested_dates, null);
@@ -134,7 +135,7 @@ test('empty VALID and LOW_DATA cannot vacuously satisfy required fields; unknown
     assert.ok((await f.evaluate()).blockers.some((b) => b.code === 'FIELD_OBSERVATION_REQUIRED'));
     assert.equal((await f.evaluate()).datasets[0].coverage_status, 'BLOCKED');
   }
-  const result = inspect('google-analytics-4', []);
+  const result = inspect('unknown-source', []);
   assert.equal(result.status, 'UNSUPPORTED');
 });
 

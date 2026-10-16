@@ -618,7 +618,7 @@ COMPLETE; source field semantics, reporting windows, mandatory coverage, and ful
 delivery validation remain unevaluated. No SQLite migration or Core lifecycle
 change is involved.
 
-### `BLOG_WRITING_PACK v2` explicit readiness evaluation (Slices 3B.1–3B.2B.3)
+### `BLOG_WRITING_PACK v2` explicit readiness evaluation (Slices 3B.1–3B.2B.5)
 
 `evaluateBlogWritingPackV2Readiness({package_id, workspace_id, requirements},
 {store, repository, loader})` reads `BLOG_DRAFT.json` through `readDraft` and
@@ -659,10 +659,10 @@ seven families satisfy the explicit supported requirements with no mandatory
 blocker. Every result includes `coverage_scope: EXPLICIT_REQUIREMENTS_ONLY`, the
 requirements snapshot and unchanged selected provenance, and
 `delivery_readiness: NOT_EVALUATED`. It does not claim full downstream delivery.
-Empty decision lists cannot approve unchecked families: selected SERP
-and GA4 families retain DECISION_REQUIRED for
-`field_compliance` until their separate slices are implemented; absent families
-remain MISSING. The implemented slices cannot produce full Blog v2 COMPLETE coverage.
+All seven mandatory families now have source-backed field inspection. Empty
+decision lists cannot approve unresolved meanings, scope or source capabilities;
+absent families remain MISSING. Real Blog v2 COMPLETE coverage remains blocked
+on the explicit decisions and acquisition gaps documented below.
 
 `BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS` records current real open decisions
 and known source gaps, with no automatic date or metric defaults. Using it cannot
@@ -704,7 +704,7 @@ source-compatible nulls and zeros remain distinct. Existing legacy/GSC empty-str
 to null normalization is retained; it never proves an absent raw property. Incompatible source shapes
 or values produce FIELD_REPRESENTATION_INVALID; absent fields produce FIELD_ABSENT;
 empty rows produce FIELD_OBSERVATION_REQUIRED. The inspector separately reports
-UNSUPPORTED for source families outside its Ads/GSC/Keyword Planner/İkas/Sitemap implementation. NO_DATA and
+UNSUPPORTED for source families outside its Ads/GSC/Keyword Planner/İkas/Sitemap/SERP/GA4 implementation. NO_DATA and
 LOW_DATA retain their original verdict, coverage decision blocker, and independent
 window/field checks. Draft bytes, source validators and v1 export behavior are unchanged.
 
@@ -829,8 +829,8 @@ empty unsupported workbooks fail parsing and cannot prove mandatory fields.
 
 Product coverage remains BLOCKED on these semantic/source gaps. The current
 profile records category/price/availability/freshness as open decisions and
-stock_status/product_status/currency_context as source changes. SERP and
-GA4 remain outside field implementation; KWP and Ads/GSC behavior is unchanged.
+stock_status/product_status/currency_context as source changes.
+KWP and Ads/GSC behavior is unchanged.
 EXPLICIT_REQUIREMENTS_ONLY, NOT_READY/PARTIAL/COMPLETE and delivery
 NOT_EVALUATED remain unchanged. No complete Blog v2 readiness is claimed.
 
@@ -893,6 +893,158 @@ observations and per-page HTTP status acquisition, plus site-scope/completeness
 and any required freshness decisions. This slice implements none of those source
 extensions. Delivery remains NOT_EVALUATED, with EXPLICIT_REQUIREMENTS_ONLY and
 NOT_READY/PARTIAL/COMPLETE unchanged. Full Blog v2 delivery is not established.
+
+### `BLOG_WRITING_PACK v2` SERP snapshot compliance (Slice 3B.2B.4)
+
+Accepted `serpapi` / GOOGLE_SERP bytes pass through unchanged selection, frozen
+draft and accepted-artifact integrity checks. SerpApi-local `inspectSerpApiFields`
+reuses the existing request validator and `parseSerpApiResponse`; acquisition,
+parsing, source validation, loader and v1 export behavior are unchanged.
+
+| Blog field | Actual evidence and existing normalization | Compliance |
+| --- | --- | --- |
+| query | Requested query is a source request dimension; provider search_parameters.q must equal it before normalization | Checked with origin REQUEST_DIMENSION_VERIFIED_BY_PROVIDER; never an independent result-text observation or a fallback for missing provider q. |
+| capture_date | Requested snapshot_date is context; artifact acquired_at is local acquisition provenance. Provider search_metadata, including any generation/processing timestamps, remains in raw bytes; no capture timestamp is normalized | UNRESOLVED / DECISION_REQUIRED even with cleared profile decisions. No date, timezone or timestamp mapping is introduced. |
+| position | organic_results[].position → positive integer position | Provider organic position only, never array index or absolute SERP rank. PAA has normalized null position and no supported rank field. Blog ranking/result scope remains DECISION_REQUIRED. |
+| url | organic_results[].link or related_questions[].link → existing validated HTTP(S) url | Provider result link only. Missing property versus explicit null/empty remains distinct in field counts. No construction from query/domain. |
+| title | organic_results[].title → nullable title | Provider organic title only. PAA has normalized null title; question text or an unnormalized PAA title property cannot fill it. No slug/query/metadata reconstruction. |
+| domain | Existing parser derives lower-case URL.hostname from observed HTTP(S) link | Origin DERIVED_FROM_OBSERVED_URL, not direct provider domain observation. Missing link has no domain; invalid links fail, and unrelated raw domain text is ignored. |
+
+Read-only `field_checks` add source-specific `serp_provenance` with fixed query,
+capture_date, position and domain origin labels. They expose counts/conditions,
+not provider result rows or raw metadata. Frozen requested_context, acquired_at,
+Run/Job/Attempt/Validation/Artifact identity and observed_context (currently null)
+remain unchanged; parsed provider context is not written into draft membership.
+
+The locked source requires THIRD_PARTY_API, the existing source/task/dataset/Job
+context shape, TR/tr, desktop, google, organic_limit=10 and a valid requested date.
+Provider q/gl/hl/device/engine/start=0 must match the source's existing rules.
+There is no location observation or historical search-date parameter invented by
+this inspector. Incompatible request context yields EVIDENCE_INVALID
+(`serp_request_context`); provider mismatches, errors and unsupported shapes yield
+FIELD_REPRESENTATION_INVALID with safe messages and no field proof.
+
+Only the existing first-ten organic normalization and separate PAA rows are used.
+Paid results and other features remain raw provider observations without a new
+normalized ranking model. Organic/PAA result_type, null position/title and native
+row order are preserved. No provider results or independent Jobs are merged or
+deduplicated. Multiple selected Jobs retain complete independent provenance and
+the existing multi_job_coverage decision. A newer Run never replaces membership.
+
+Absent supported raw fields produce FIELD_ABSENT. Present null/empty/blank required
+URL/title or a domain unavailable from a present link produces
+FIELD_OBSERVATION_REQUIRED; existing parser empty-string-to-null behavior is
+retained. Real zero is never substituted for missing: organic position zero is
+invalid under the unchanged positive-integer source contract. PAA position/title
+are not counted as observed merely because normalized properties exist.
+capture_date stays UNRESOLVED with zero observed count and an independent semantic
+decision; it never receives a fabricated value. Empty VALID/NO_DATA/LOW_DATA
+cannot establish fields, while warning verdict/coverage decisions remain separate.
+
+Mandatory SERP coverage always retains DECISION_REQUIRED for capture_date,
+position_semantics (organic/absolute and result-type scope), search_context
+(including Blog query role), query_coverage and freshness. Empty caller decision
+lists cannot approve these unspecified requirements. Source VALID alone cannot
+satisfy Blog SERP coverage. Approving the capture basis/timezone, query/result and
+search-context scope, required query set/completeness and snapshot-age policy
+requires a separate contract decision. Independent provider timestamps/domains,
+absolute ranks or additional result categories would require separately approved
+source capabilities if demanded; none are acquired or normalized in this slice.
+
+Coverage states and EXPLICIT_REQUIREMENTS_ONLY are
+unchanged, delivery remains NOT_EVALUATED, and no full Blog v2 delivery or new
+real-provider acceptance is established.
+
+### `BLOG_WRITING_PACK v2` GA4 Content Performance compliance (Slice 3B.2B.5)
+
+The existing GA4 source acquires Content Performance separately from Paid Funnel.
+`inspectGoogleAnalytics4ContentFields` inspects accepted bundle bytes through the
+same frozen membership and verified-byte seam. It reuses the source's existing
+pure context/bundle validation helpers and normalizer. The two validator helpers
+are now exported for source-local reuse; their behavior is unchanged. No provider
+request, acquisition report, metric list, source validator verdict or parser
+normalization is changed.
+
+| Blog field | Existing requested/returned GA4 field | Mapping / type / limits |
+| --- | --- | --- |
+| landing_page | landingPage dimension; dimensionHeaders and dimensionValues | Existing landing_page string, preserving exact text including `(not set)`. That placeholder is valid provider evidence, not an identified page. It is the first-pageview path dimension, not landingPagePlusQueryString, pagePath, pageLocation or a fabricated absolute URL. |
+| sessions | sessions / TYPE_INTEGER | Native nullable number of sessions; no users-to-sessions inference. |
+| users | Only activeUsers / TYPE_INTEGER is acquired and normalized as active_users | UNSUPPORTED for Blog users. totalUsers is not requested or normalized; its proposed Blog alias remains unapproved. Never copy/reconstruct from active_users. |
+| engaged_sessions | engagedSessions / TYPE_INTEGER | Native nullable number of engaged sessions; not calculated from a rate. |
+| engagement_rate | engagementRate / TYPE_FLOAT | Native nullable fraction, with no scaling to percentage and no recomputation from other metrics. |
+| average_engagement_time | No engagement-duration metric or approved expression is acquired | UNSUPPORTED with independent DECISION_REQUIRED and SOURCE_CHANGE_REQUIRED. No calculation, zero/null placeholder or averageSessionDuration alias is emitted. |
+| key_events | keyEvents / TYPE_FLOAT | Native nullable key-event count, retaining the source's fractional-capable representation. No eventCount/conversions substitute or historical equivalence assumption. |
+
+Provider meanings and units are documented in the
+[GA4 Data API schema](https://developers.google.com/analytics/devguides/reporting/data/v1/api-schema).
+User engagement duration is total seconds; average session duration is a different
+metric. Google's [predefined reports](https://developers.google.com/analytics/devguides/reporting/data/v1/predefined-reports)
+illustrate distinct engagement-duration expressions per session and per active
+user. Neither denominator nor either expression is approved for this Blog field.
+The current source acquires none of those duration metrics/expressions. Approve
+the exact Blog meaning first, then separately extend acquisition/normalization/
+validation if required. totalUsers support likewise needs an approved users
+contract and a separate source change while preserving active_users distinctly.
+
+The existing exact Content header names/types/order, single landingPage granularity,
+bundle dataset identity, page offsets and request limit are rechecked. Paid Funnel
+bundles, extra date/device/page dimensions, substituted metrics and unapproved
+totalUsers/duration columns fail FIELD_REPRESENTATION_INVALID; their original raw
+observations remain unchanged. The inspector also requires normalized row count
+to equal the bundle's declared total. No duplicate rows or independent Jobs are
+removed, and metrics are never merged across windows/properties/populations.
+
+Presence is inspected at each actual provider cell's `value` property. A missing
+value is FIELD_ABSENT even if normalization emits null. Present null and empty
+strings retain existing null normalization, while actual numeric zero stays zero.
+Malformed numeric values, missing/mismatched headers or incompatible representations
+fail safely rather than becoming zero. Blank landing-page observations produce
+FIELD_OBSERVATION_REQUIRED; no path reconstruction occurs. Empty accepted
+VALID/NO_DATA/LOW_DATA cannot prove required observations, with independent original
+source verdict/coverage blockers. Source validation itself remains unchanged.
+
+GA4-local inspection marks `(not set)` as an unresolved landing-page observation
+without changing its raw or normalized value. The shared helper's source-neutral
+per-row unresolved-observation hook excludes marked values from observed_count
+without reclassifying them as null/absent. Placeholder-only evidence has zero
+identified pages; a placeholder plus one legitimate path has one. Either keeps
+landing_page UNRESOLVED and produces FIELD_OBSERVATION_REQUIRED through the
+existing evaluator. A legitimate path alone remains OBSERVED. Raw rows, source
+validation, blank/null/missing behavior, metadata and independent provenance are
+unchanged; another source's identical text receives no GA4 interpretation. This
+does not approve page completeness or any other unresolved coverage policy.
+
+Optional `ga4_requested_dates: {start_date, end_date} | null` adds ordered real
+calendar endpoints to the existing version-1 explicit requirements profile.
+Missing/null endpoints remain DECISION_REQUIRED (`ga4_requested_dates`) even with
+empty decision lists; provided endpoints compare exactly with every verified
+Content Job's `start_date`/`end_date`, producing WINDOW_MISMATCH on disagreement.
+No 28/90-day or Paid Funnel duration is inherited. Existing open profile decisions
+still require resolution; supplying dates does not silently clear them.
+
+Bundle dates must match frozen Job context independently of Blog endpoint approval
+(`ga4_request_window` / WINDOW_MISMATCH). Request context must be Content Performance
+without Paid Funnel filters; supplied property_id must be numeric and match the
+bundle's recorded acquisition property (`ga4_request_context` / EVIDENCE_INVALID).
+Legacy Jobs without frozen property_id remain usable for inspection but retain
+DECISION_REQUIRED (`property_scope`); raw acquisition identity does not retroactively
+freeze a reviewed property or establish independent provider identity observation.
+
+Read-only `field_checks.ga4_context` preserves the bundle's recorded property,
+requested endpoints, validated response header names and existing normalized
+provider currency/timezone metadata per Job. It contains no business row values.
+These are requested/acquisition fields and provider metadata, not an invented
+observed reporting period. Acquisition time and every original membership/context/
+Run/Job/Attempt/Validation/Artifact reference remain unchanged. No current Workspace
+connection, newer Run or inferred property timezone repairs historical evidence.
+
+Mandatory GA4 coverage retains users/time semantic and source-capability blockers
+and DECISION_REQUIRED (`content_coverage`) for unapproved page/property/population
+completeness, even when decision lists are empty. Multiple legitimate Jobs remain
+independent with existing multi_job_coverage blockers; there is no one-Job restriction.
+All seven families now have inspection, but their documented gaps still prevent
+real COMPLETE readiness. NOT_READY/PARTIAL/COMPLETE, EXPLICIT_REQUIREMENTS_ONLY and
+delivery NOT_EVALUATED remain unchanged. No live GA4 or delivery acceptance is claimed.
 
 ---
 

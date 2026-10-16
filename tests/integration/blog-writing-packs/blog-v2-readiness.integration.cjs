@@ -89,15 +89,19 @@ test('newer Runs do not change membership or draft bytes; provenance changes blo
   assert.deepEqual(fs.readFileSync(filename), before);
 });
 
-test('a synthetic profile cannot approve two unchecked families or the implemented families remaining source and scope gaps', async () => {
+test('a synthetic profile cannot approve the seven implemented families remaining source and scope gaps', async () => {
   const f = fixture(); const draft = await f.persist(families.map(([source, type], i) => f.add(`family_${i}`, source, type)));
   const requirements = syntheticRequirements();
   const result = await f.evaluate(requirements);
   assert.equal(result.coverage_status, 'PARTIAL');
   assert.equal(result.coverage_scope, 'EXPLICIT_REQUIREMENTS_ONLY');
   assert.equal(result.delivery_readiness, 'NOT_EVALUATED');
-  assert.equal(result.blockers.length, 15);
-  assert.equal(result.blockers.filter((b) => b.code === 'DECISION_REQUIRED' && b.requirement_id === 'field_compliance').length, 2);
+  assert.equal(result.blockers.length, 23);
+  assert.equal(result.blockers.filter((b) => b.code === 'DECISION_REQUIRED' && b.requirement_id === 'field_compliance').length, 0);
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'users' && b.code === 'SOURCE_CHANGE_REQUIRED'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'average_engagement_time' && b.code === 'DECISION_REQUIRED'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GOOGLE_SERP' && b.requirement_id === 'capture_date'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GOOGLE_SERP' && b.requirement_id === 'query_coverage'));
   assert.ok(result.blockers.some((b) => b.code === 'SOURCE_CHANGE_REQUIRED' && b.requirement_id === 'currency_context'));
   assert.ok(result.blockers.some((b) => b.requirement_id === 'keyword_coverage'));
   assert.deepEqual(result.requirements, requirements);

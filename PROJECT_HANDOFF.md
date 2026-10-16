@@ -2,10 +2,10 @@
 
 **Checkpoint date:** 2026-10-16
 **Current branch:** `feat/google-analytics-4-source-v1`
-**Production implementation checkpoint:** Blog v2 through Slices 3B.2B.1–3B.2B.3 on `feat/google-analytics-4-source-v1` (baseline `a99beaf`)
-**Repository state:** this checkpoint includes Keyword Planner, İkas Products and Sitemap compliance together with their shared evaluator and fixtures; existing `reports/` is preserved outside Git
-**Current stage:** Sitemap 12/12, İkas 13/13, KWP 14/14, readiness 10/10, Ads/GSC 13/13, selection 7/7 and draft 8/8; source/parser, loader, v1, TypeScript, lint and diff gates passed locally
-**Current action:** resolve the documented approval/source gaps before claiming full Blog v2 compliance or delivery; Sitemap page_type/title/page-status and site completeness remain blocked, alongside product/KWP/Ads/GSC gaps. SERP and GA4 are unchecked
+**Production implementation checkpoint:** Blog v2 through Slices 3B.2B.4–3B.2B.5 plus GA4 placeholder correction on `feat/google-analytics-4-source-v1` (baseline `abb8be3`)
+**Repository state:** this checkpoint includes SERP and GA4 Content Performance compliance with their shared evaluator, fixtures and contracts; existing `reports/` is preserved outside Git
+**Current stage:** GA4 18/18, SERP 14/14, Sitemap 12/12, İkas 13/13, KWP 14/14, readiness 10/10, Ads/GSC 13/13, selection 7/7 and draft 8/8; relevant GA4/SERP source gates, loader, v1, TypeScript, lint and diff gates passed locally
+**Current action:** resolve documented contract/source gaps before claiming full Blog v2 readiness or delivery. GA4 users/time meaning and acquisition, reporting window and coverage remain blocked alongside previous gaps. Delivery remains NOT_EVALUATED
 
 ---
 
@@ -285,6 +285,24 @@ status remain explicit source gaps; document HTTP success/lastmod are not reused
 as page observations. Site completeness remains a decision even for one Job.
 KWP/İkas compliance is included in the same checkpoint. Execution record:
 `docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-sitemap-compliance.md`.
+
+Slice 3B.2B.4 adds accepted SERP field inspection using the unchanged parser and
+request contract. Query is a request dimension verified against provider q;
+positions remain organic-only, PAA rows stay separate and domain is explicitly
+derived from observed link. No requested/acquisition/provider-metadata timestamp
+becomes capture_date. Contract decisions remain blockers even with empty decision
+lists. No new acquisition, real-provider or delivery acceptance is included.
+Execution record: `docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-serp-compliance.md`.
+
+Slice 3B.2B.5 checks actual GA4 Content Performance bundles with existing source
+validation/normalization. landingPage paths and native sessions/engagement/key-event
+observations are preserved. `(not set)` stays raw/normalized provider text but does
+not count as an identified landing page; placeholder-only or mixed sets retain an
+explicit observation blocker. activeUsers never supplies users, and no duration
+average is calculated. Missing totalUsers/time capabilities and unapproved meanings
+remain explicit; optional approved endpoints compare exactly. Independent property/
+window provenance remains separate. No acquisition or live/delivery acceptance is
+included. Execution record: `docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-ga4-compliance.md`.
 
 ---
 

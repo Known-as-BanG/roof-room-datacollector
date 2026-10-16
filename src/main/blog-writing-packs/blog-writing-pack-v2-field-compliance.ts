@@ -1,4 +1,6 @@
 import { inspectSitemapFields } from '../sources/bitkimark/bitkimark-sitemap-field-inspector';
+import { inspectSerpApiFields } from '../sources/serpapi/serpapi-field-inspector';
+import { inspectGoogleAnalytics4ContentFields } from '../sources/google-analytics-4/google-analytics-4-field-inspector';
 import { inspectIkasProductsFields } from '../sources/ikas/ikas-products-field-inspector';
 import type { BlogWritingPackV2FieldObservation } from '../../shared/blog-writing-pack-v2-readiness';
 import { inspectKeywordPlannerFields } from '../sources/google-ads/keyword-planner-field-inspector';
@@ -11,15 +13,24 @@ export const inspectBlogWritingPackV2Fields = (source_id: string, body: unknown,
   limitations: Array<'currency_context' | 'manual_csv_scope' | 'competition_semantics'>;
   sitemap_issues?: Array<{ code: 'DECISION_REQUIRED' | 'SOURCE_CHANGE_REQUIRED'; requirement_id: string; actual: string }>;
   product_issues?: Array<{ code: 'DECISION_REQUIRED' | 'SOURCE_CHANGE_REQUIRED' | 'FIELD_OBSERVATION_REQUIRED'; requirement_id: string; actual: string }>;
+  serp_provenance?: ReturnType<typeof inspectSerpApiFields>['provenance'];
+  serp_missing_observations?: string[];
+  ga4_context?: ReturnType<typeof inspectGoogleAnalytics4ContentFields>['context'];
+  ga4_issues?: ReturnType<typeof inspectGoogleAnalytics4ContentFields>['issues'];
 } => {
   let rows: Array<Record<string, unknown>>;
   let presence: Array<Record<string, boolean>>;
   let fields: string[];
   let unresolved_fields: string[] = [];
+  let unresolved_observations: Array<Record<string, boolean>> = [];
   let unsupported_fields: string[] = [];
   const sitemap_issues: Array<{ code: 'DECISION_REQUIRED' | 'SOURCE_CHANGE_REQUIRED'; requirement_id: string; actual: string }> = [];
   const product_issues: Array<{ code: 'DECISION_REQUIRED' | 'SOURCE_CHANGE_REQUIRED' | 'FIELD_OBSERVATION_REQUIRED'; requirement_id: string; actual: string }> = [];
   let limitations: Array<'currency_context' | 'manual_csv_scope' | 'competition_semantics'> = [];
+  let serp_provenance: ReturnType<typeof inspectSerpApiFields>['provenance'] | undefined;
+  let serp_missing_observations: string[] = [];
+  let ga4_context: ReturnType<typeof inspectGoogleAnalytics4ContentFields>['context'] | undefined;
+  let ga4_issues: ReturnType<typeof inspectGoogleAnalytics4ContentFields>['issues'] = [];
   if (source_id === 'google-ads-search-terms') {
     const inspected = inspectSearchTermsFields(body);
     rows = inspected.rows.map((row) => ({ ...row }));
@@ -74,19 +85,41 @@ export const inspectBlogWritingPackV2Fields = (source_id: string, body: unknown,
           : 'Sitemap document HTTP status does not establish individual page HTTP status.' });
     if (unresolved_fields.includes('url')) sitemap_issues.push({ code: 'DECISION_REQUIRED', requirement_id: 'sitemap_document_kind',
       actual: 'Selected sitemap index lists child sitemap documents, not webpage observations.' });
+  } else if (source_id === 'serpapi') {
+    if (!(body instanceof Uint8Array)) throw new Error('SERP inspection requires accepted JSON bytes.');
+    const inspected = inspectSerpApiFields(body, requested_context);
+    rows = inspected.rows.map((row) => ({ ...row }));
+    presence = inspected.presence;
+    fields = ['query', 'capture_date', 'position', 'url', 'title', 'domain'];
+    serp_provenance = inspected.provenance;
+    serp_missing_observations = inspected.missing_observations;
+  } else if (source_id === 'google-analytics-4') {
+    if (!(body instanceof Uint8Array)) throw new Error('GA4 inspection requires accepted bundle bytes.');
+    const inspected = inspectGoogleAnalytics4ContentFields(body, requested_context);
+    rows = inspected.rows;
+    presence = inspected.presence;
+    unresolved_observations = inspected.unresolved_observations;
+    fields = ['landing_page', 'sessions', 'users', 'engaged_sessions', 'engagement_rate', 'average_engagement_time', 'key_events'];
+    unsupported_fields = inspected.unsupported_fields;
+    ga4_context = inspected.context;
+    ga4_issues = inspected.issues;
   } else {
     return { status: 'UNSUPPORTED', rows: [], fields: [], limitations: [] };
   }
   return { status: 'SUPPORTED', rows, limitations, ...(source_id === 'ikas-products' ? { product_issues } : {}),
+    ...(source_id === 'serpapi' ? { serp_provenance, serp_missing_observations } : {}),
+    ...(source_id === 'google-analytics-4' ? { ga4_context, ga4_issues } : {}),
     ...(source_id === 'bitkimark-sitemap' ? { sitemap_issues } : {}), fields: fields.map((field) => {
-    let observed_count = 0; let null_count = 0; let absent_count = 0;
+    let observed_count = 0; let null_count = 0; let absent_count = 0; let unresolved_count = 0;
     rows.forEach((row, index) => {
       if (!presence[index][field]) absent_count += 1;
+      else if (unresolved_observations[index]?.[field]) unresolved_count += 1;
       else if (unresolved_fields.includes(field) && !Object.hasOwn(row, field)) return;
       else if (row[field] === null) null_count += 1;
       else observed_count += 1;
     });
-    return { field, status: unsupported_fields.includes(field) ? 'UNSUPPORTED' : rows.length === 0 ? 'UNRESOLVED' : absent_count > 0 ? 'ABSENT'
-      : unresolved_fields.includes(field) ? 'UNRESOLVED' : observed_count > 0 ? 'OBSERVED' : 'NULL', observed_count, null_count, absent_count };
+    return { field, status: source_id === 'serpapi' && field === 'capture_date' ? 'UNRESOLVED'
+      : unsupported_fields.includes(field) ? 'UNSUPPORTED' : rows.length === 0 ? 'UNRESOLVED' : absent_count > 0 ? 'ABSENT'
+      : unresolved_count > 0 || unresolved_fields.includes(field) ? 'UNRESOLVED' : observed_count > 0 ? 'OBSERVED' : 'NULL', observed_count, null_count, absent_count };
   }) };
 };

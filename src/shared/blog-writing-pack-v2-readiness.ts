@@ -28,6 +28,7 @@ export interface BlogWritingPackV2Requirements {
   readonly gsc_requested_dates: { readonly start_date: string; readonly end_date: string } | null;
   readonly keyword_planner_scope?: BlogWritingPackV2KeywordPlannerScope | null;
   readonly ads_requested_dates?: { readonly start_date: string; readonly end_date: string } | null;
+  readonly ga4_requested_dates?: { readonly start_date: string; readonly end_date: string } | null;
 }
 
 // Explicit conservative input for the current real contract; no period/metric defaults.
@@ -41,11 +42,12 @@ export const BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS: BlogWritingPackV2Require
     PRODUCTS: { open_decisions: ['category', 'price', 'availability', 'freshness'], required_source_changes: ['stock_status', 'product_status', 'currency_context'] },
     SITEMAP_URLS: { open_decisions: ['scope', 'freshness'], required_source_changes: ['page_type', 'title', 'status'] },
     GOOGLE_SERP: { open_decisions: ['capture_date', 'freshness'], required_source_changes: [] },
-    GA4_CONTENT_PERFORMANCE: { open_decisions: ['users', 'average_engagement_time', 'reporting_window'], required_source_changes: ['average_engagement_time'] },
+    GA4_CONTENT_PERFORMANCE: { open_decisions: ['users', 'average_engagement_time', 'reporting_window'], required_source_changes: ['users', 'average_engagement_time'] },
   },
   gsc_requested_dates: null,
   ads_requested_dates: null,
   keyword_planner_scope: null,
+  ga4_requested_dates: null,
 };
 
 export type BlogWritingPackV2BlockerCode =
@@ -86,6 +88,15 @@ export interface BlogWritingPackV2ReadinessEvaluation {
   field_checks: Array<{
     run_id: string; job_id: string; artifact_id: string; dataset_type: string;
     row_count: number; fields: BlogWritingPackV2FieldObservation[];
+    ga4_context?: {
+      property_id: string; requested_start_date: string; requested_end_date: string;
+      dimension_headers: string[]; metric_headers: string[];
+      provider_metadata: { currency_code: string | null; time_zone: string | null };
+    };
+    serp_provenance?: {
+      query: 'REQUEST_DIMENSION_VERIFIED_BY_PROVIDER'; capture_date: 'UNAPPROVED';
+      position: 'PROVIDER_ORGANIC_POSITION_ONLY'; domain: 'DERIVED_FROM_OBSERVED_URL';
+    };
   }>;
   datasets: Array<{
     dataset_type: BlogWritingPackV2MandatoryDataset;
