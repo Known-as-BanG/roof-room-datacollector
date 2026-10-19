@@ -18,7 +18,7 @@ const {
 } = require(path.join(buildRoot, 'main/sources/serpapi/serpapi-request.js'));
 const { serpApiReadinessEvaluator } = require(path.join(buildRoot, 'main/sources/serpapi/serpapi-readiness.js'));
 const { SERPAPI_SOURCE_ID } = require(path.join(buildRoot, 'shared/serpapi.js'));
-const { GoogleApiTransportError } = require(path.join(buildRoot, 'main/sources/google-api/api-helpers.js'));
+const { GoogleApiTransportError, createFetchApiRequester } = require(path.join(buildRoot, 'main/sources/google-api/api-helpers.js'));
 
 const context = createSerpApiJobContext({
   task_id: 'serpapi-serp-snapshot',
@@ -109,6 +109,48 @@ const makeRecord = (overrides = {}) => ({
   assert.equal(requests[0].url.includes('hl=tr'), true);
   assert.equal(requests[0].url.includes('device=desktop'), true);
   assert.equal(requests[0].url.includes('start=0'), true);
+
+  // The clock advances at byte receipt, JSON parsing and later collection work.
+  const receiptTimes = ['2026-09-10T23:59:59.123Z', '2026-09-11T00:00:01.456Z'];
+  const rawResponse = Buffer.from(JSON.stringify(providerBody));
+  let observedClock = '2026-09-10T20:00:00.000Z';
+  let receiptIndex = 0;
+  const timestampedClient = new SerpApiClient(store, 'serpapi:workspace-a',
+    createFetchApiRequester(async () => ({
+      headers: new Headers({ 'content-type': 'application/json' }),
+      arrayBuffer: async () => {
+        observedClock = receiptTimes[receiptIndex++];
+        return rawResponse;
+      },
+      status: 200,
+    })), () => new Date(observedClock));
+  const timestampedSource = new SerpApiSource(timestampedClient);
+  const originalParse = JSON.parse;
+  JSON.parse = (...args) => {
+    if (args[0] === rawResponse.toString()) observedClock = '2026-09-12T12:00:00.000Z';
+    return originalParse(...args);
+  };
+  const acquisitions = [];
+  try {
+    for (const expectedTime of receiptTimes) {
+      const evidence = await timestampedSource.collect({ source_context: context, job_key: context.job_key });
+      assert.equal(evidence.result_type, 'ARTIFACT_PRODUCED');
+      assert.deepEqual(evidence.acquisition_metadata, {
+        response_received_at: expectedTime,
+        response_received_at_origin: 'COLLECTOR_OBSERVED_RESPONSE_RECEIPT',
+      });
+      assert.equal(observedClock, '2026-09-12T12:00:00.000Z');
+      assert.deepEqual(Buffer.from(evidence.bytes), rawResponse);
+      acquisitions.push(evidence);
+    }
+  } finally {
+    JSON.parse = originalParse;
+  }
+  assert.notDeepEqual(acquisitions[0].acquisition_metadata, acquisitions[1].acquisition_metadata);
+  assert.equal(Object.hasOwn(parsedRaw, 'acquisition_metadata'), false);
+  assert.equal(collected.acquisition_metadata, undefined,
+    'A requester without response-receipt evidence must not manufacture a time at promise resolution.');
+  console.log('PASS SERPAPI-ACQUISITION-001: receipt time precedes parsing, survives collection, and remains distinct across acquisitions');
 
   const requestCountBeforeInvalid = requests.length;
   const invalid = await source.collect({

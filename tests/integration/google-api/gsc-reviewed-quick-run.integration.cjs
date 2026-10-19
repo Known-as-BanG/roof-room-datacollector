@@ -23,6 +23,7 @@ const expectedContextCurrent = {
   task_id: 'gsc-current-90-days', source_id: SOURCE,
   reference_date: '2026-09-17', date_policy: POLICY_CURRENT,
   requested_date_start: '2026-06-19', requested_date_end: '2026-09-16',
+  site_url: 'sc-domain:bitkimark.com',
 };
 
 const credentials = {
@@ -520,6 +521,13 @@ test('GSC-QUERY-PAGE-28-001: Query × Page Review resolves current 28 complete d
   const workspace = repository.createWorkspace({
     workspace_name: 'GSC Query Page 28-day test',
   });
+  const selectedProperty = 'sc-domain:example.test';
+  repository.upsertSourceConnection({
+    workspace_id: workspace.workspace_id,
+    source_id: SOURCE,
+    credential_ref: 'fixture-credential',
+    safe_metadata: { site_url: selectedProperty },
+  });
 
   const controller = new DesktopMultiSourceController({
     repository,
@@ -543,6 +551,7 @@ test('GSC-QUERY-PAGE-28-001: Query × Page Review resolves current 28 complete d
         included: true,
         task_id: 'gsc-query-page-current-28-days',
         date_policy: 'TODAY_MINUS_28_TO_YESTERDAY',
+        site_url: selectedProperty,
       },
     },
   };
@@ -574,6 +583,10 @@ test('GSC-QUERY-PAGE-28-001: Query × Page Review resolves current 28 complete d
 
   assert.equal(review.job_count, 1);
   assert.equal(review.can_start, true);
+  assert.equal(reviewedSource.site_url, selectedProperty);
+
+  const started = await controller.startDraft(review.reviewed_draft);
+  assert.equal(started.jobs[0].source_context.site_url, selectedProperty);
 });
 
 test('GSC-REVIEW-BOUND-001: Review → atomic persisted Job → production requester survives next-day Start and reopen (Current 90 Days)', async (t) => {
@@ -591,13 +604,14 @@ test('GSC-REVIEW-BOUND-001: Review → atomic persisted Job → production reque
   const controller = new DesktopMultiSourceController({ repository, application_version: 'test', now: () => clock, readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) } });
 
   const draft = await controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
-  draft.reusable_configuration = { sources: { [SOURCE]: { included: true, task_id: 'gsc-current-90-days', date_policy: POLICY_CURRENT } } };
+  draft.reusable_configuration = { sources: { [SOURCE]: { included: true, task_id: 'gsc-current-90-days', date_policy: POLICY_CURRENT, site_url: 'sc-domain:bitkimark.com' } } };
 
   const review = await controller.reviewDraft(draft);
   assert.ok(review.reviewed_draft, 'GSC Review must return an absolute-date artifact');
   assert.equal(review.can_start, true);
   const reviewed = structuredClone(review.reviewed_draft);
   const reviewedSource = reviewed.resolved_configuration.sources[SOURCE];
+  assert.equal(reviewedSource.site_url, 'sc-domain:bitkimark.com');
   // 90 days before Sept 17 2026 is June 19 2026
   assert.equal(reviewedSource.date_ranges[0].requested_date_start, '2026-06-19');
   assert.equal(reviewedSource.date_ranges[0].requested_date_end, '2026-09-16');
@@ -609,6 +623,7 @@ test('GSC-REVIEW-BOUND-001: Review → atomic persisted Job → production reque
   repository = new StateRepository(getDatabasePath(directories));
   const jobs = repository.listJobs(started.run.run_id);
   assert.equal(jobs[0].source_context.requested_date_start, '2026-06-19');
+  assert.equal(jobs[0].source_context.site_url, 'sc-domain:bitkimark.com');
   assert.equal(
     jobs[0].source_context.country_filter,
     'TUR',
@@ -630,6 +645,10 @@ test('GSC-REVIEW-BOUND-001: Review → atomic persisted Job → production reque
 
 
   const body = requests[0].body;
+  assert.ok(
+    requests[0].url.includes(`/sites/${encodeURIComponent('sc-domain:bitkimark.com')}/searchAnalytics/query`),
+    'The native Query × Page request must use the frozen Domain property identity.',
+  );
   assert.equal(body.startDate, '2026-06-19', 'Actual GSC request must contain the exactly reviewed start date');
   assert.equal(body.endDate, '2026-09-16', 'Actual GSC request must contain the exactly reviewed end date');
   assert.deepEqual(body.dimensions, ['query', 'page'], 'Dimensions must remain unchanged');
@@ -662,6 +681,28 @@ test('GSC-SOURCE-CONTEXT-001: source uses explicit context and rejects unsupport
   await source.collect({ ...context, source_context: second });
   assert.equal(requests[1].body.startDate, '2026-09-01');
   assert.equal(requests[1].body.endDate, '2026-09-17');
+
+  const requestsBeforeMissingProperty = requests.length;
+  const missingPropertyContext = { ...expectedContextCurrent };
+  delete missingPropertyContext.site_url;
+  const missingPropertyResult = await source.collect({
+    ...context,
+    source_context: missingPropertyContext,
+  });
+  assert.equal(missingPropertyResult.result_type, 'FAILED');
+  assert.equal(requests.length, requestsBeforeMissingProperty);
+
+  const legacyContext = { ...missingPropertyContext };
+  delete legacyContext.task_id;
+  const legacyResult = await source.collect({
+    ...context,
+    source_context: legacyContext,
+  });
+  assert.equal(legacyResult.result_type, 'ARTIFACT_PRODUCED');
+  assert.ok(
+    requests.at(-1).url.includes(`/sites/${encodeURIComponent('sc-domain:bitkimark.com')}/searchAnalytics/query`),
+    'Taskless legacy Jobs must retain their configured-property compatibility.',
+  );
 
   const requestsBeforeInvalidCountry = requests.length;
   const invalidCountry = await source.collect({
@@ -707,7 +748,7 @@ test('GSC-REVIEW-BOUND-002: Long 16 Months reviewed request binding', async (t) 
   const controller = new DesktopMultiSourceController({ repository, application_version: 'test', now: () => clock, readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) } });
 
   const draft = await controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
-  draft.reusable_configuration = { sources: { [SOURCE]: { included: true, task_id: 'gsc-long-16-months', date_policy: POLICY_LONG } } };
+  draft.reusable_configuration = { sources: { [SOURCE]: { included: true, task_id: 'gsc-long-16-months', date_policy: POLICY_LONG, site_url: 'sc-domain:bitkimark.com' } } };
 
   const review = await controller.reviewDraft(draft);
   const reviewedSource = review.reviewed_draft.resolved_configuration.sources[SOURCE];
@@ -730,7 +771,100 @@ test('GSC-REVIEW-BOUND-002: Long 16 Months reviewed request binding', async (t) 
   await runtime.orchestrator.runUntilBlocked(started.run.run_id);
 
   assert.equal(requests.length, 1);
+  assert.ok(requests[0].url.includes(`/sites/${encodeURIComponent('sc-domain:bitkimark.com')}/searchAnalytics/query`));
   const body = requests[0].body;
   assert.equal(body.startDate, '2025-05-17');
   assert.equal(body.endDate, '2026-09-16');
+});
+
+test('GSC-DATE-COVERAGE-001: companion final dates survive native validation, metadata persistence and SQLite restart', async (t) => {
+  const root = path.join(workRoot, 'final-date-coverage');
+  const directories = Object.fromEntries(['config', 'data', 'database', 'browser_profiles', 'logs', 'public_downloads'].map(key => [key, path.join(root, key)]));
+  directories.app_data_root = root; directories.runs = path.join(directories.data, 'runs');
+  for (const directory of Object.values(directories)) fs.mkdirSync(directory, { recursive: true });
+  assert.equal(initializeDatabase(directories).status, 'READY');
+  let repository = new StateRepository(getDatabasePath(directories)); t.after(() => repository.close());
+  const workspace = repository.createWorkspace({ workspace_name: 'Synthetic date coverage' });
+  const selectedProperty = 'https://example.test/Prefix/';
+  repository.upsertSourceConnection({ workspace_id: workspace.workspace_id, source_id: SOURCE, credential_ref: 'fixture', safe_metadata: { site_url: selectedProperty } });
+  const instant = '2026-10-01T10:00:00.000Z';
+  t.mock.timers.enable({ apis: ['Date'], now: new Date(instant) });
+  const controller = new DesktopMultiSourceController({ repository, application_version: 'test', now: () => new Date(instant), readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) } });
+  const draft = await controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
+  draft.reusable_configuration = { sources: { [SOURCE]: { included: true, site_url: selectedProperty, task_id: 'gsc-query-page-current-28-days', date_policy: 'TODAY_MINUS_28_TO_YESTERDAY' } } };
+  const review = await controller.reviewDraft(draft); assert.equal(review.can_start, true);
+  const started = await controller.startDraft(review.reviewed_draft);
+  const queryPage = { rows: [{ keys: ['synthetic', 'https://example.test/page'], clicks: 0, impressions: 1, ctr: 0, position: 2 }] };
+  const requests = []; const originalFetch = globalThis.fetch; t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url, options) => {
+    if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'synthetic', expires_in: 3600 });
+    const body = JSON.parse(options.body); requests.push({ url, body });
+    if (body.dimensions[0] !== 'date') return Response.json(queryPage);
+    const start = Date.parse(`${body.startDate}T00:00:00.000Z`);
+    return Response.json({ rows: Array.from({ length: 28 }, (_, index) => ({ keys: [new Date(start + index * 86400000).toISOString().slice(0, 10)], clicks: 0, impressions: 1, ctr: 0, position: 2 })) });
+  };
+  const runtime = createProductionCollectionRuntime({ repository, directories, credentialStore: credentials, googleTrendsSource: { id: 'google-trends' } });
+  await runtime.orchestrator.runUntilBlocked(started.run.run_id);
+  repository.close(); repository = new StateRepository(getDatabasePath(directories));
+  const [job] = repository.listJobs(started.run.run_id);
+  assert.equal(job.validation_status, 'VALID'); assert.ok(job.accepted_artifact_id);
+  const [attempt] = repository.listAttempts(job.job_id); const artifact = repository.getArtifact(job.accepted_artifact_id);
+  const filename = path.join(directories.runs, job.run_id, SOURCE, 'metadata', `${job.job_key}.metadata.json`);
+  const metadata = JSON.parse(fs.readFileSync(filename));
+  assert.equal(metadata.attempt_id, attempt.attempt_id); assert.equal(metadata.raw_artifact_id, artifact.artifact_id);
+  assert.equal(metadata.validation_status, 'VALID'); assert.deepEqual(metadata.source_context, job.source_context);
+  assert.equal(job.source_context.site_url, selectedProperty);
+  assert.ok(metadata.acquisition_metadata);
+  const proof = metadata.acquisition_metadata.gsc_date_coverage;
+  assert.equal(proof.response_received_at, instant);
+  assert.equal(proof.request.site_url, selectedProperty);
+  assert.equal(proof.request.search_type, 'web'); assert.equal(proof.request.data_state, 'final');
+  assert.deepEqual([proof.request.start_date, proof.request.end_date], [job.source_context.requested_date_start, job.source_context.requested_date_end]);
+  assert.equal(proof.raw_response.rows.length, 28);
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((request) => request.url.includes(`/sites/${encodeURIComponent(selectedProperty)}/searchAnalytics/query`)));
+  assert.equal(requests[1].body.dataState, 'final');
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(directories.runs, job.run_id, artifact.relative_path))), [queryPage]);
+});
+
+test('GSC-PROPERTY-BINDING-001: desktop rejects missing, invalid, changed and conflicting property selection', async (t) => {
+  const root = path.join(workRoot, 'property-binding');
+  const directories = Object.fromEntries(['config', 'data', 'database', 'browser_profiles', 'logs', 'public_downloads'].map(key => [key, path.join(root, key)]));
+  directories.app_data_root = root; directories.runs = path.join(directories.data, 'runs');
+  for (const directory of Object.values(directories)) fs.mkdirSync(directory, { recursive: true });
+  assert.equal(initializeDatabase(directories).status, 'READY');
+  const repository = new StateRepository(getDatabasePath(directories)); t.after(() => repository.close());
+  const workspace = repository.createWorkspace({ workspace_name: 'Synthetic explicit GSC property' });
+  const setProperty = (site_url) => repository.upsertSourceConnection({ workspace_id: workspace.workspace_id, source_id: SOURCE, credential_ref: 'fixture', safe_metadata: { site_url } });
+  setProperty('sc-domain:example.test');
+  const controller = new DesktopMultiSourceController({ repository, application_version: 'test', now: () => new Date('2026-10-01T10:00:00.000Z'), readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) }, credential_availability: { hasCredential: async () => true } });
+  const draft = await controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
+  const config = { included: true, task_id: 'gsc-query-page-current-28-days', date_policy: 'TODAY_MINUS_28_TO_YESTERDAY' };
+  draft.reusable_configuration = { sources: { [SOURCE]: config } };
+  for (const site_url of [undefined, '', 'not-a-property', 'sc-domain:', 'https://', ' sc-domain:example.test', 'sc-domain:other.test']) {
+    const input = structuredClone(draft); if (site_url !== undefined) input.reusable_configuration.sources[SOURCE].site_url = site_url;
+    assert.equal((await controller.reviewDraft(input)).can_start, false, `Invalid/missing selection: ${site_url}`);
+  }
+  config.site_url = 'sc-domain:example.test';
+  for (const date_ranges of [[{ job_key: 'conflict', site_url: 'sc-domain:other.test', requested_date_start: '2026-09-03', requested_date_end: '2026-09-30' }]]) {
+    const conflict = structuredClone(draft); conflict.reusable_configuration.sources[SOURCE].date_ranges = date_ranges;
+    assert.equal((await controller.reviewDraft(conflict)).can_start, false, 'Managed reconstruction cannot erase a conflicting Job property.');
+  }
+  for (const task of DESKTOP_TASK_CATALOG.filter((entry) => entry.source_id === SOURCE)) {
+    const input = structuredClone(draft); Object.assign(input.reusable_configuration.sources[SOURCE], { task_id: task.task_id, date_policy: task.date_policy });
+    const reviewed = await controller.reviewDraft(input); assert.equal(reviewed.can_start, true, task.task_id);
+    assert.equal(reviewed.reviewed_draft.resolved_configuration.sources[SOURCE].site_url, config.site_url);
+  }
+  const review = await controller.reviewDraft(draft); assert.equal(review.can_start, true);
+  for (const target of ['resolved_configuration', 'reusable_configuration']) {
+    const changed = structuredClone(review.reviewed_draft); changed[target].sources[SOURCE].site_url = 'sc-domain:other.test';
+    await assert.rejects(controller.startDraft(changed), /property|site|ready|start/i);
+  }
+  const conflict = structuredClone(review.reviewed_draft); conflict.resolved_configuration.sources[SOURCE].date_ranges[0].site_url = 'sc-domain:other.test';
+  await assert.rejects(controller.startDraft(conflict), /property|site|ready|start/i);
+  setProperty('https://example.test/Prefix/');
+  await assert.rejects(controller.startDraft(review.reviewed_draft), /property|site|ready|start/i);
+  assert.equal(repository.listRuns(workspace.workspace_id).length, 0);
+  const view = await controller.getWorkspaceConnections(workspace.workspace_id);
+  assert.equal(view.find((entry) => entry.source_id === SOURCE).site_url, 'https://example.test/Prefix/');
 });

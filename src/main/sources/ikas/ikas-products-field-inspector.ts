@@ -24,6 +24,7 @@ export const inspectIkasProductsFields = (bytes: Uint8Array, requested_context: 
   const mapped = new Set(parsed.mapped_fields);
   return {
     rows: parsed.rows,
+    derivations: { availability: { expression: 'legacy variant availability derivation; no approved Blog availability mapping', approved_for_blog: false } },
     presence: parsed.rows.map(() => ({
       product_id: mapped.has('product_id'), product_title: mapped.has('product_title'), url: mapped.has('url'),
       category: mapped.has('categories') || mapped.has('categories_product_type') || mapped.has('product_type'),

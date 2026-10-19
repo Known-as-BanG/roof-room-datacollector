@@ -1,3 +1,4 @@
+import { requireGscPropertySelection, requireGscPropertyBinding } from '../sources/google-search-console/gsc-date-coverage';
 import type {
   ReusableCollectionConfiguration,
   RunDraftOrigin,
@@ -35,7 +36,7 @@ import { ResumePlanner } from '../core/resume-planner';
 import { ReconciliationCoordinator } from '../core/reconciliation-coordinator';
 import { RetryPolicy } from '../core/retry-policy';
 import { RunManager } from '../core/run-manager';
-import { createSearchTermsJobContext } from '../sources/google-ads/search-terms-request';
+import { createSearchTermsJobContext, requireSearchTermsCustomerId, requireSearchTermsAccountBinding } from '../sources/google-ads/search-terms-request';
 import {
   createGoogleAdsReportingJobContext,
   googleAdsReportingContextAsJson,
@@ -363,6 +364,9 @@ const productionPlanner = (sourceId: string, config: Record<string, unknown>): J
     sourceId === 'google-search-console-query-page'
     || sourceId === 'google-search-console-query'
   ) {
+    if (sourceId === 'google-search-console-query-page') {
+      try { requireGscPropertySelection(config.site_url, config.date_ranges, config.tasks); } catch { return []; }
+    }
     const jobPlans =
       plans(
         Array.isArray(config.date_ranges)
@@ -630,14 +634,10 @@ const productionPlanner = (sourceId: string, config: Record<string, unknown>): J
           `search-terms-${index + 1}`,
       );
 
-    const customerId =
-      typeof config.customer_id === 'string'
-        ? config.customer_id
-        : null;
-
-    return customerId === null
-      ? jobPlans
-      : jobPlans.map(
+    let customerId: string;
+    try { customerId = requireSearchTermsCustomerId(config.customer_id, config.jobs); }
+    catch { return []; }
+    return jobPlans.map(
           (plan) => ({
             ...plan,
             source_context: {
@@ -864,7 +864,11 @@ export class DesktopMultiSourceController {
             credential_status,
             readiness_status:
               readiness.readiness_status,
-            ...(source_id === 'google-ads-search-reporting' ? {
+            ...(source_id === 'google-search-console-query-page' ? {
+              site_url: typeof asObject(connection?.safe_metadata).site_url === 'string'
+                ? String(asObject(connection?.safe_metadata).site_url) : null,
+            } : {}),
+            ...(['google-ads-search-reporting', 'google-ads-search-terms'].includes(source_id) ? {
               customer_id: typeof asObject(connection?.safe_metadata).customer_id === 'string'
                 ? String(asObject(connection?.safe_metadata).customer_id).replace(/-/gu, '')
                 : null,
@@ -1041,6 +1045,23 @@ export class DesktopMultiSourceController {
     const cards = this.buildCards(draft.workspace_id, draft.reusable_configuration, statuses);
     const includedSources = cards.filter((card) => card.included).map((card) => card.source_id);
     const blockingSources = cards.filter((card) => card.included && card.readiness_status !== 'READY').map((card) => card.source_id);
+    if (includedSources.includes('google-ads-search-terms')) {
+      const connection = this.dependencies.repository.listSourceConnections(draft.workspace_id)
+        .find((entry) => entry.source_id === 'google-ads-search-terms');
+      try {
+        requireSearchTermsAccountBinding(sourceConfig(draft.reusable_configuration, 'google-ads-search-terms').customer_id,
+          asObject(connection?.safe_metadata).customer_id, sourceConfig(draft.reusable_configuration, 'google-ads-search-terms').jobs);
+      } catch {
+        if (!blockingSources.includes('google-ads-search-terms')) blockingSources.push('google-ads-search-terms');
+      }
+    }
+    if (includedSources.includes('google-search-console-query-page')) {
+      const config = sourceConfig(draft.reusable_configuration, 'google-search-console-query-page');
+      const connection = this.dependencies.repository.listSourceConnections(draft.workspace_id)
+        .find((entry) => entry.source_id === 'google-search-console-query-page');
+      try { requireGscPropertyBinding(config.site_url, asObject(connection?.safe_metadata).site_url, config.date_ranges, config.tasks); }
+      catch { if (!blockingSources.includes('google-search-console-query-page')) blockingSources.push('google-search-console-query-page'); }
+    }
     const resolvedAt =
       this.now();
 
@@ -1421,6 +1442,24 @@ export class DesktopMultiSourceController {
           .resolved_configuration,
         includedSources,
       );
+
+    if (includedSources.includes('google-ads-search-terms')) {
+      const connection = this.dependencies.repository.listSourceConnections(reviewedDraft.workspace_id)
+        .find((entry) => entry.source_id === 'google-ads-search-terms');
+      requireSearchTermsAccountBinding(sourceConfig(reviewedDraft.resolved_configuration, 'google-ads-search-terms').customer_id,
+        asObject(connection?.safe_metadata).customer_id, sourceConfig(reviewedDraft.resolved_configuration, 'google-ads-search-terms').jobs);
+      requireSearchTermsAccountBinding(sourceConfig(reviewedDraft.reusable_configuration, 'google-ads-search-terms').customer_id,
+        asObject(connection?.safe_metadata).customer_id, sourceConfig(reviewedDraft.reusable_configuration, 'google-ads-search-terms').jobs);
+    }
+
+    if (includedSources.includes('google-search-console-query-page')) {
+      const connection = this.dependencies.repository.listSourceConnections(reviewedDraft.workspace_id)
+        .find((entry) => entry.source_id === 'google-search-console-query-page');
+      for (const configuration of [reviewedDraft.resolved_configuration, reviewedDraft.reusable_configuration]) {
+        const config = sourceConfig(configuration, 'google-search-console-query-page');
+        requireGscPropertyBinding(config.site_url, asObject(connection?.safe_metadata).site_url, config.date_ranges, config.tasks);
+      }
+    }
 
     if (reviewedDraft.task_id === GOOGLE_ADS_CONVERSION_DATE_TASK_ID) {
       const reviewedCustomerId = sourceConfig(
@@ -2336,7 +2375,6 @@ export class DesktopMultiSourceController {
 
       if (
         sourceId === 'google-ads-search-reporting'
-        || sourceId === 'google-ads-search-terms'
         || sourceId === 'google-ads-change-history'
         || sourceId === 'google-ads-configuration'
         || sourceId === 'google-keyword-planner'
@@ -2416,7 +2454,8 @@ export class DesktopMultiSourceController {
           ).site_url;
 
         if (
-          typeof siteUrl === 'string'
+          sourceId === 'google-search-console-query'
+          && typeof siteUrl === 'string'
           && siteUrl.trim().length > 0
         ) {
           sourceConfiguration.site_url =
@@ -2607,7 +2646,9 @@ export class DesktopMultiSourceController {
       const reusableConfiguration = cloneConfiguration(draft.reusable_configuration);
       const resolvedConfiguration = cloneConfiguration(draft.reusable_configuration);
       const sources = asJsonObjectValue(resolvedConfiguration.sources);
-      const jobContext = createSearchTermsJobContext(range);
+      let jobContext: JsonObject;
+      try { jobContext = createSearchTermsJobContext(range, requireSearchTermsCustomerId(config.customer_id, config.jobs)); }
+      catch { return null; }
       sources[sourceId] = { ...asJsonObjectValue(sources[sourceId]), ...jobContext, jobs: [jobContext] };
       resolvedConfiguration.sources = sources;
       return {

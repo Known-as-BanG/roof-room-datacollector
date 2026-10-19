@@ -42,6 +42,12 @@ const CONTENT_METRICS = [
   { name: 'purchaseRevenue', type: 'TYPE_CURRENCY' },
 ] as const;
 
+const CONTENT_METRICS_V2 = [
+  ...CONTENT_METRICS,
+  { name: 'totalUsers', type: 'TYPE_INTEGER' },
+  { name: 'userEngagementDuration', type: 'TYPE_SECONDS' },
+] as const;
+
 const PAID_DIMENSIONS = [
   { name: 'date' },
   { name: 'sessionSource' },
@@ -163,6 +169,7 @@ export const requireJobContext = (
           'end_date',
         ],
   );
+  allowedKeys.add('property_id');
 
   if (
     Object.keys(value).some(
@@ -172,6 +179,16 @@ export const requireJobContext = (
     throw new Error(
       'GA4 source_context contains unsupported fields.',
     );
+  }
+
+  const propertyIdValue = value.property_id;
+  let propertyId: string | undefined;
+  if (propertyIdValue === undefined) {
+    propertyId = undefined;
+  } else if (typeof propertyIdValue === 'string' && /^\d+$/u.test(propertyIdValue)) {
+    propertyId = propertyIdValue;
+  } else {
+    throw new Error('GA4 source_context property ID must contain digits only.');
   }
 
   const startDate = requireIsoDate(
@@ -207,6 +224,7 @@ export const requireJobContext = (
 
     return {
       dataset_type: datasetType,
+      ...(propertyId === undefined ? {} : { property_id: propertyId }),
       start_date: startDate,
       end_date: endDate,
       session_filter:
@@ -216,6 +234,7 @@ export const requireJobContext = (
 
   return {
     dataset_type: datasetType,
+    ...(propertyId === undefined ? {} : { property_id: propertyId }),
     start_date: startDate,
     end_date: endDate,
   };
@@ -223,11 +242,12 @@ export const requireJobContext = (
 
 const expectedHeaders = (
   datasetType: GoogleAnalytics4DatasetType,
+  bundleVersion: 1 | 2,
 ) => (
   datasetType === 'GA4_CONTENT_PERFORMANCE'
     ? {
         dimensions: CONTENT_DIMENSIONS,
-        metrics: CONTENT_METRICS,
+        metrics: bundleVersion === 2 ? CONTENT_METRICS_V2 : CONTENT_METRICS,
       }
     : {
         dimensions: PAID_DIMENSIONS,
@@ -238,8 +258,9 @@ const expectedHeaders = (
 const requireExactHeaders = (
   body: Record<string, unknown>,
   datasetType: GoogleAnalytics4DatasetType,
+  bundleVersion: 1 | 2,
 ): void => {
-  const expected = expectedHeaders(datasetType);
+  const expected = expectedHeaders(datasetType, bundleVersion);
 
   if (!Array.isArray(body.dimensionHeaders)) {
     throw new Error(
@@ -306,8 +327,9 @@ const requirePageRows = (
   body: Record<string, unknown>,
   datasetType: GoogleAnalytics4DatasetType,
   rowCount: number,
+  bundleVersion: 1 | 2,
 ): unknown[] => {
-  const expected = expectedHeaders(datasetType);
+  const expected = expectedHeaders(datasetType, bundleVersion);
 
   if (body.rows === undefined && rowCount === 0) {
     return [];
@@ -358,6 +380,7 @@ export const requireRawBundle = (
   value: unknown,
   jobContext: {
     dataset_type: GoogleAnalytics4DatasetType;
+    property_id?: string;
     start_date: string;
     end_date: string;
   },
@@ -371,7 +394,10 @@ export const requireRawBundle = (
     );
   }
 
-  if (value.bundle_schema_version !== 1) {
+  if (
+    value.bundle_schema_version !== 1
+    && !(value.bundle_schema_version === 2 && value.dataset_type === 'GA4_CONTENT_PERFORMANCE')
+  ) {
     throw new Error(
       'GA4 raw bundle schema version is unsupported.',
     );
@@ -402,6 +428,10 @@ export const requireRawBundle = (
     throw new Error(
       'GA4 raw bundle property ID must contain digits only.',
     );
+  }
+
+  if (jobContext.property_id !== undefined && value.request.property_id !== jobContext.property_id) {
+    throw new Error('GA4 raw bundle property ID does not match the immutable Job.');
   }
 
   if (
@@ -496,12 +526,14 @@ export const requireRawBundle = (
     requireExactHeaders(
       parsedPage,
       jobContext.dataset_type,
+      value.bundle_schema_version,
     );
 
     const rows = requirePageRows(
       parsedPage,
       jobContext.dataset_type,
       rowCount,
+      value.bundle_schema_version,
     );
 
     if (rowCount > 0 && rows.length === 0) {
@@ -664,10 +696,10 @@ implements CollectionValidator {
       };
     }
 
-    if (normalized.rows.length === 0) {
+    if (normalized.rows.length !== rowCount) {
       return failure(
         'INVALID_SCHEMA',
-        'GA4 non-empty report produced no normalized rows.',
+        'GA4 report row coverage is incomplete.',
       );
     }
 

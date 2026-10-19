@@ -1,11 +1,11 @@
 # RoofRoom Data Collector — Project Handoff
 
-**Checkpoint date:** 2026-10-16
+**Checkpoint date:** 2026-10-19 (reviewed deterministic development checkpoint)
 **Current branch:** `feat/google-analytics-4-source-v1`
-**Production implementation checkpoint:** Blog v2 through Slices 3B.2B.4–3B.2B.5 plus GA4 placeholder correction on `feat/google-analytics-4-source-v1` (baseline `abb8be3`)
-**Repository state:** this checkpoint includes SERP and GA4 Content Performance compliance with their shared evaluator, fixtures and contracts; existing `reports/` is preserved outside Git
-**Current stage:** GA4 18/18, SERP 14/14, Sitemap 12/12, İkas 13/13, KWP 14/14, readiness 10/10, Ads/GSC 13/13, selection 7/7 and draft 8/8; relevant GA4/SERP source gates, loader, v1, TypeScript, lint and diff gates passed locally
-**Current action:** resolve documented contract/source gaps before claiming full Blog v2 readiness or delivery. GA4 users/time meaning and acquisition, reporting window and coverage remain blocked alongside previous gaps. Delivery remains NOT_EVALUATED
+**Implementation checkpoint:** this commit includes the reviewed GA4 metric/property-window, SERP acquisition/freshness, Blog v2 JSON publication, Ads account binding and GSC date-coverage/property-binding follow-ups. Prior committed baseline: `6d28411fdf4bc69b0b829598af4e99f1a905bc87`. Exact file scope and fresh deterministic verification are recorded in `docs/superpowers/plans/2026-10-19-development-checkpoint.md`.
+**Repository state:** prior WIP and private `reports/` are preserved. Explicitly property-bound 28-day GSC Query × Page collections now preserve a separate final/date response and observed receipt in native Attempt metadata. New drafts freeze its integrity reference; source-owned coverage inspection requires every returned date and keeps sparse Query × Page observations separate. Complete date coverage never clears the existing `gsc_finality` publication blocker. Canonical semantics are in `DATA_CONTRACTS.md`, Google Search Console → Query × Page finality evidence boundary; execution detail and exact changed files are in the existing Ads/GSC compliance plan.
+**Current deterministic verification:** JSON publication 59/59, GSC reviewed runtime 16/16 (including explicit/missing property selection, Review/Start consistency, exact Domain/URL-prefix identity, native Query × Page and companion-date request scope, and SQLite restart with synthetic providers), readiness 10/10, and field compliance 13/13 passed. Desktop UI smoke and multi-source flow, GSC validation, Google API adapters and accepted-package loader gates passed. TypeScript, targeted TypeScript/CommonJS lint and diff/whitespace checks passed. No live-provider or full Blog delivery acceptance is established.
+**Current action:** resolve how GSC's latest eligible 28-day interval is proved at actual publication creation; historical complete date evidence does not establish it. Supported desktop Query × Page Jobs now require and freeze an explicit property; taskless legacy Jobs retain compatibility without fabricated property observations or date proof. Query × Page row completeness is not guaranteed. Planner and other mandatory source gaps remain independently blocked. Actual source-policy publication remains blocked; successful JSON delivery status remains INCOMPLETE.
 
 ---
 
@@ -229,7 +229,26 @@ The Blog package:
 
 Fresh deterministic verification and packaged arm64 acceptance passed. No live provider request was made for this slice.
 
+### `BLOG_WRITING_PACK v2` JSON-only publication
+
+The approved 2026-10-18 contract is canonical in `DATA_CONTRACTS.md`. The additive
+programmatic publisher stages verified raw/acquisition bytes, samples creation
+time, reevaluates actual readiness and atomically commits verified JSON only when
+all mandatory checks pass. Every selected member's identity/integrity remains
+required, including optional Trends. No replacement evidence, cached verdict,
+workbook or desktop publication flow is introduced. Planner's unknown calendar
+context and GSC's unestablished finality are explicit publication blockers; earlier
+field/coverage blockers remain. Execution and verification are recorded in
+`docs/superpowers/plans/2026-10-18-blog-writing-pack-v2-json-publication.md`.
+
 ### `BLOG_WRITING_PACK v2` draft membership
+
+The 2026-10-17 approved delivery requirements and explicit resolutions of older
+slice-era assumptions are canonical in `DATA_CONTRACTS.md`. These approvals do
+not establish source support or provider acceptance. The slice summaries below
+describe the implementation checkpoints. The subsequent GA4 metric/property-window
+follow-ups change only GA4 metrics/validation/inspection and its requirements
+defaults; other conservative blockers remain effective in the publication path above.
 
 The implementation adds a version-specific selection resolver and draft assembler
 above existing accepted evidence. Assembly revalidates exact Run/Job/Attempt/
@@ -265,7 +284,8 @@ live, packaged, publication or production-data acceptance. Execution record:
 Slice 3B.2B.1 adds source-backed Keyword Planner API/manual CSV field inspection
 through the same evaluator and accepted-artifact seam. Provider-observed identity,
 raw presence, history, currency units and competition category/index stay distinct.
-Explicit Blog scope never inherits the acquisition path's 12-month constraint.
+The evaluator requires explicit Blog scope rather than inheriting acquisition
+constraints; the new Blog contract independently approves 12 completed months.
 API currency, manual structured request scope and Blog keyword completeness remain
 explicit blockers; no acquisition change or real-data acceptance is included.
 Execution record: `docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-keyword-planner-compliance.md`.
@@ -289,20 +309,44 @@ KWP/İkas compliance is included in the same checkpoint. Execution record:
 Slice 3B.2B.4 adds accepted SERP field inspection using the unchanged parser and
 request contract. Query is a request dimension verified against provider q;
 positions remain organic-only, PAA rows stay separate and domain is explicitly
-derived from observed link. No requested/acquisition/provider-metadata timestamp
-becomes capture_date. Contract decisions remain blockers even with empty decision
-lists. No new acquisition, real-provider or delivery acceptance is included.
+derived from observed link. Follow-ups derive capture_date only from verified
+collector receipt and replace capture/freshness decision messages with mandatory
+draft-time evidence/age checks. Other scope blockers remain, including exact query
+coverage. No lifecycle, requested or provider date can substitute for receipt.
+No real-provider or delivery acceptance is included.
+The acquisition follow-up captures receipt after full response-body acquisition
+and before decoding/parsing, using existing acquisition_metadata and immutable
+Attempt-scoped metadata files. Accepted loading validates bindings; v2 membership
+freezes optional serp_acquisition with timestamp, collector origin and metadata
+hash/path/size. Frozen legacy acquired_at still copies artifact.created_at; missing
+receipt evidence is never reconstructed. Controlled synthetic runtime verifies
+distinct failed/retry Attempt provenance, delayed artifact registration, accepted
+loading and draft reload. Draft creation remains membership-only; readiness uses
+draft.created_at by default or explicit evaluated_at for SERP reevaluation, without
+changing GA4's reference. Derived counts distinguish capture dates from provider
+observations. Fresh/stale checks preserve membership and source acceptance.
+The additive v2 JSON publisher above independently checks freshness at package
+creation; draft-time tests alone do not prove package-time expiry.
 Execution record: `docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-serp-compliance.md`.
 
 Slice 3B.2B.5 checks actual GA4 Content Performance bundles with existing source
 validation/normalization. landingPage paths and native sessions/engagement/key-event
 observations are preserved. `(not set)` stays raw/normalized provider text but does
 not count as an identified landing page; placeholder-only or mixed sets retain an
-explicit observation blocker. activeUsers never supplies users, and no duration
-average is calculated. Missing totalUsers/time capabilities and unapproved meanings
-remain explicit; optional approved endpoints compare exactly. Independent property/
-window provenance remains separate. No acquisition or live/delivery acceptance is
-included. Execution record: `docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-ga4-compliance.md`.
+explicit observation blocker. The metric-completion follow-up adds Content raw
+bundle v2 with totalUsers and userEngagementDuration; native total_users and
+user_engagement_duration stay separate from active_users and the inspector's
+users alias / derived seconds-per-session. Missing inputs or nonpositive sessions
+produce null with explicit reasons; malformed numbers fail closed. Legacy v1 keeps
+its native row shape and explicit metric gaps. Header/version and normalized row-
+count validation fail closed; 250,001-row pagination and both old/new placeholder
+behavior are deterministically covered. Property/window follow-up now validates
+explicit frozen property and all supplied response timezone observations, derives
+last-28-completed-day endpoints at draft.created_at and reports per-Job expected-
+window provenance. Missing/invalid/conflicting metadata, cross-Job property/timezone
+conflicts and wrong windows remain explicit blockers; legacy context is not repaired.
+Independent coverage and provider acceptance remain open. Execution record:
+`docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-ga4-compliance.md`.
 
 ---
 
@@ -376,9 +420,22 @@ Completed deterministic source checkpoints:
 
 Next:
 
-1. preserve completed source boundaries and evidence checkpoints;
-2. select the next approved independent source scope from current repository state;
-3. do not expand completed slices without explicit scope.
+1. Use `DATA_CONTRACTS.md` → `BLOG_WRITING_PACK v2` approved delivery requirements
+   (2026-10-17) for the approved semantics, exact earlier-contract resolutions,
+   remaining decisions and source limitations; these remain authoritative for
+   follow-up work.
+2. GA4 Content metric and property/timezone/window compliance are deterministically
+   implemented. Keep legacy missing provenance blocked without automatic repairs.
+   Independent coverage and real source/API acceptance remain separate boundaries;
+   live execution requires its own explicit scope.
+3. Keep required KWP keyword completeness, exact SERP query selection, provider-
+   supported İkas stock/status rules, Sitemap scope/page-type/controlled acquisition,
+   independent coverage/freshness decisions open. Missing legacy GA4 property or
+   timezone evidence remains an explicit per-artifact blocker.
+   Real feasibility, currency/missing fields, provider acceptance, a successful
+   real-evaluator v2 publication and full delivery remain unproven. JSON mechanics
+   and independent publication-time checks are verified above. Preserve blocked-family status and v1/
+   Ads Growth boundaries; a later implementation requires its own task scope.
 
 Do not run live provider requests merely to reconfirm already deterministic results.
 

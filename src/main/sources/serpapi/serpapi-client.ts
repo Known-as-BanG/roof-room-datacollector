@@ -1,6 +1,7 @@
 import {
   SERPAPI_TIMEOUT_MS,
   type SerpApiRequestContext,
+  type SerpApiResponseAcquisition,
 } from '../../../shared/serpapi';
 import type { CredentialStore } from '../../core/credential-store';
 import {
@@ -54,6 +55,7 @@ export class SerpApiClient {
     private readonly credentialStore: CredentialStore,
     private readonly credentialRef: string,
     requester?: ApiRequester,
+    private readonly now: () => Date = () => new Date(),
   ) {
     this.requester = requester ?? createFetchApiRequester(
       fetch,
@@ -68,6 +70,7 @@ export class SerpApiClient {
   async search(context: SerpApiRequestContext): Promise<{
     raw: unknown;
     raw_bytes?: Uint8Array;
+    acquisition_metadata?: SerpApiResponseAcquisition;
   }> {
     let apiKey: string;
     try {
@@ -97,10 +100,12 @@ export class SerpApiClient {
     });
 
     let response: ApiResponse;
+    let receivedAt: string | undefined;
     try {
       response = await this.requester({
         url: `https://serpapi.com/search?${query.toString()}`,
         method: 'GET',
+        on_response_received: () => { receivedAt ??= this.now().toISOString(); },
       });
     } catch (error) {
       if (error instanceof GoogleApiTransportError) {
@@ -172,6 +177,10 @@ export class SerpApiClient {
     return {
       raw: response.body,
       raw_bytes: 'raw_body' in response ? response.raw_body : undefined,
+      ...(receivedAt === undefined ? {} : { acquisition_metadata: {
+        response_received_at: receivedAt,
+        response_received_at_origin: 'COLLECTOR_OBSERVED_RESPONSE_RECEIPT',
+      } }),
     };
   }
 }

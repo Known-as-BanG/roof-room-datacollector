@@ -134,7 +134,7 @@ const parseNumericMetric = (
   if (
     value === undefined
     || value === null
-    || value === ''
+    || (typeof value === 'string' && value.trim() === '')
   ) {
     return null;
   }
@@ -259,6 +259,10 @@ export const normalizeGoogleAnalytics4Rows = (
               metricValues,
               'activeUsers',
             ),
+            ...(bundle.bundle_schema_version === 2 ? {
+              total_users: parseNumericMetric(metricValues, 'totalUsers'),
+              user_engagement_duration: parseNumericMetric(metricValues, 'userEngagementDuration'),
+            } : {}),
             sessions: parseNumericMetric(
               metricValues,
               'sessions',

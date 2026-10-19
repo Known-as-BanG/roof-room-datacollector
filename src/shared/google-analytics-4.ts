@@ -41,6 +41,8 @@ export interface GoogleAnalytics4ProviderMetadata {
 export interface GoogleAnalytics4ContentPerformanceRow {
   landing_page: string;
   active_users: number | null;
+  total_users?: number | null;
+  user_engagement_duration?: number | null;
   sessions: number | null;
   engaged_sessions: number | null;
   engagement_rate: number | null;
@@ -78,7 +80,7 @@ export interface GoogleAnalytics4RawPage {
 }
 
 export interface GoogleAnalytics4RawBundle {
-  bundle_schema_version: 1;
+  bundle_schema_version: 1 | 2;
   dataset_type: GoogleAnalytics4DatasetType;
   request: {
     property_id: string;

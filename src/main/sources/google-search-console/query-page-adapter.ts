@@ -1,3 +1,4 @@
+import { inspectGscDateCoverage } from './gsc-date-coverage';
 import type { GscQueryPageRow, GscQueryRow } from '../../../shared/google-api';
 import { requireApiObject, requireArray, requireNumberOrNull, type ApiRequester } from '../google-api/api-helpers';
 
@@ -16,7 +17,7 @@ export interface GscQueryPageRequest { site_url: string; start_date: string; end
 export interface GscQueryPageResult { raw_pages: unknown[]; rows: GscQueryPageRow[]; }
 export const normalizeGscRows = (body: unknown): GscQueryPageRow[] => requireArray(requireApiObject(body, 'GSC response').rows, 'GSC response.rows').map((entry, index) => { const row = requireApiObject(entry, `GSC rows[${index}]`); const keys = requireArray(row.keys, `GSC rows[${index}].keys`); if (keys.length < 2 || typeof keys[0] !== 'string' || typeof keys[1] !== 'string') throw new Error('GSC row keys must contain query and page.'); return { query: keys[0], page: keys[1], clicks: requireNumberOrNull(row.clicks, 'clicks'), impressions: requireNumberOrNull(row.impressions, 'impressions'), ctr: requireNumberOrNull(row.ctr, 'ctr'), position: requireNumberOrNull(row.position, 'position') }; });
 // Keep raw metric presence separate from the normalizer's nullable result.
-export const inspectGscQueryPageFields = (body: unknown) => {
+export const inspectGscQueryPageFields = (body: unknown, publication_at?: string, requested_context?: unknown, date_coverage?: unknown, reference_at?: string) => {
   const pages = requireArray(body, 'GSC accepted pages');
   const rows = pages.flatMap(normalizeGscRows);
   const presence = pages.flatMap((page) => requireArray(requireApiObject(page, 'GSC response').rows, 'GSC rows')
@@ -33,7 +34,15 @@ export const inspectGscQueryPageFields = (body: unknown) => {
         [field, field === 'query' || field === 'page' || Object.hasOwn(row, field) && row[field] !== undefined]
       )));
     }));
-  return { rows, presence };
+  const coverage = inspectGscDateCoverage(date_coverage, requested_context, reference_at ?? publication_at);
+  const coverage_issues = coverage.status === 'OBSERVED_28_DATES' ? [] : [{ code: coverage.status === 'MISSING_EVIDENCE' ? 'SOURCE_CHANGE_REQUIRED' as const
+    : coverage.status === 'MISSING_DATES' ? 'FIELD_OBSERVATION_REQUIRED' as const : 'EVIDENCE_INVALID' as const,
+    requirement_id: 'gsc_date_coverage', actual: `Conservative GSC date coverage is ${coverage.status}; missing dates are not zero observations.` }];
+  return { rows, presence, gsc_date_coverage: coverage, coverage_issues, ...(publication_at === undefined ? {} : {
+    publication_issues: [{ code: 'SOURCE_CHANGE_REQUIRED' as const, requirement_id: 'gsc_finality',
+      actual: 'The latest eligible GSC 28-day interval at publication remains unresolved; finalized returned values and observed dates do not establish it.' }],
+    publication_time_context: { reference_at: publication_at, finality: 'NOT_ESTABLISHED' },
+  }) };
 };
 
 // An absent scope preserves historical unfiltered GSC requests.
@@ -49,7 +58,7 @@ const gscCountryFilterBody = (value: unknown) => {
   };
 };
 
-export const fetchGscQueryPage = async (request: GscQueryPageRequest, requester: ApiRequester, maxPages = 100): Promise<GscQueryPageResult> => { const pages: unknown[] = []; const rows: GscQueryPageRow[] = []; for (let page = 0; page < maxPages; page += 1) { const response = await requester({ url: `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(request.site_url)}/searchAnalytics/query`, method: 'POST', body: { siteUrl: request.site_url, startDate: request.start_date, endDate: request.end_date, dimensions: ['query', 'page'], ...gscCountryFilterBody(request.country_filter), rowLimit: 25000, startRow: page * 25000 } }); if (response.status < 200 || response.status >= 300) throw new Error(`GSC provider error HTTP ${response.status}.`); pages.push(response.body); const normalized = normalizeGscRows(response.body); rows.push(...normalized); if (normalized.length < 25000) break; } return { raw_pages: pages, rows }; };
+export const fetchGscQueryPage = async (request: GscQueryPageRequest, requester: ApiRequester, maxPages = 100): Promise<GscQueryPageResult> => { const pages: unknown[] = []; const rows: GscQueryPageRow[] = []; for (let page = 0; page < maxPages; page += 1) { const response = await requester({ url: `https://www.googleapis.com/webmasters/v3/sites/${encodeURIComponent(request.site_url)}/searchAnalytics/query`, method: 'POST', body: { siteUrl: request.site_url, startDate: request.start_date, endDate: request.end_date, dimensions: ['query', 'page'], type: 'web', ...gscCountryFilterBody(request.country_filter), rowLimit: 25000, startRow: page * 25000 } }); if (response.status < 200 || response.status >= 300) throw new Error(`GSC provider error HTTP ${response.status}.`); pages.push(response.body); const normalized = normalizeGscRows(response.body); rows.push(...normalized); if (normalized.length < 25000) break; } return { raw_pages: pages, rows }; };
 
 export interface GscQueryRequest {
   site_url: string;

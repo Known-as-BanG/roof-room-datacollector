@@ -186,14 +186,17 @@ const requireDocumentKey = (
   return documentKey;
 };
 
-const createAttemptDocumentFilename = (
+export const createAttemptDocumentFilename = (
   documentKey: string,
   attemptNumber: number,
   documentKind: 'metadata' | 'validation',
-): string =>
-  attemptNumber === 1
+): string => {
+  requireDocumentKey(documentKey);
+  requireAttemptNumber(attemptNumber);
+  return attemptNumber === 1
     ? `${documentKey}.${documentKind}.json`
     : `${documentKey}.attempt_${attemptNumber}.${documentKind}.json`;
+};
 
 const serializeJsonDocument = (
   document: unknown,

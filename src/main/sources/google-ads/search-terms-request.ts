@@ -32,7 +32,27 @@ const SEARCH_TERM_FIELDS = [
 ] as const;
 
 // This source owns the supported resource/campaign contract; Core only carries it.
-export const createSearchTermsJobContext = (range: DesktopResolvedDateRange): JsonObject => ({
+export const requireSearchTermsCustomerId = (value: unknown, jobs?: unknown): string => {
+  if (typeof value !== 'string' || !/^\d+$/u.test(value)) throw new Error('Search Terms requires an explicitly selected numeric customer ID.');
+  if (jobs !== undefined) {
+    if (!Array.isArray(jobs) || jobs.some((job: unknown) => typeof job !== 'object' || job === null || Array.isArray(job)
+      || (Object.hasOwn(job, 'customer_id') && (job as Record<string, unknown>).customer_id !== value))) {
+      throw new Error('Search Terms Job accounts must agree with the explicitly selected account.');
+    }
+  }
+  return value;
+};
+
+export const requireSearchTermsAccountBinding = (selected: unknown, connected: unknown, jobs?: unknown): string => {
+  const customerId = requireSearchTermsCustomerId(selected, jobs);
+  if (typeof connected !== 'string' || connected.replace(/-/gu, '') !== customerId) {
+    throw new Error('Selected Google Ads account changed or does not match the Workspace connection; Review again.');
+  }
+  return customerId;
+};
+
+export const createSearchTermsJobContext = (range: DesktopResolvedDateRange, customer_id: unknown): JsonObject => ({
+  customer_id: requireSearchTermsCustomerId(customer_id),
   task_id: GOOGLE_ADS_SEARCH_TERMS_SOURCE_ID,
   source_id: GOOGLE_ADS_SEARCH_TERMS_SOURCE_ID,
   source_mode: 'search_term_view',
@@ -64,12 +84,12 @@ export const buildSearchTermsQuery = (context: SourceCollectionContext): string 
   const end = requireDate(request.requested_date_end);
   if (start > end) throw new Error('Ads Search Terms date range is reversed.');
 
-  return buildSearchTermQueryForDates(start, end);
+  return buildSearchTermQueryForDates(start, end, ['customer.id', 'customer.time_zone', ...SEARCH_TERM_FIELDS]);
 };
 
-const buildSearchTermQueryForDates = (start: string, end: string): string => (
+const buildSearchTermQueryForDates = (start: string, end: string, fields: readonly string[] = SEARCH_TERM_FIELDS): string => (
   [
-    `SELECT ${SEARCH_TERM_FIELDS.join(', ')}`,
+    `SELECT ${fields.join(', ')}`,
     'FROM search_term_view',
     "WHERE campaign.advertising_channel_type = 'SEARCH'",
     `AND segments.date BETWEEN '${start}' AND '${end}'`,

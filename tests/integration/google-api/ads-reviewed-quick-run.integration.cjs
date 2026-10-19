@@ -14,6 +14,7 @@ const { StateRepository } = load('main/storage/state-repository.js');
 const SOURCE = 'google-ads-search-terms';
 const POLICY = 'TODAY_MINUS_17_TO_YESTERDAY';
 const expectedContext = {
+  customer_id: '1234567890',
   task_id: SOURCE, source_id: SOURCE, source_mode: 'search_term_view', campaign_type: 'SEARCH',
   reference_date: '2026-09-17', date_policy: POLICY,
   requested_date_start: '2026-08-31', requested_date_end: '2026-09-16',
@@ -43,16 +44,48 @@ test('ADS-REVIEW-BOUND-001: Review → atomic persisted Job → production reque
   const controller = new DesktopMultiSourceController({ repository, application_version: 'test', now: () => clock, readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) } });
   const task = DESKTOP_TASK_CATALOG.find(task => task.task_id === SOURCE);
   const draft = await controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
-  draft.reusable_configuration = { sources: { [SOURCE]: { included: true, task_id: task.task_id, date_policy: task.date_policy } } };
+  for (const customer_id of [undefined, null, '', 'invalid', '123-456-7890', '456']) {
+    draft.reusable_configuration = { sources: { [SOURCE]: { included: true, task_id: task.task_id, date_policy: task.date_policy,
+      ...(customer_id === undefined ? {} : { customer_id }) } } };
+    const blocked = await controller.reviewDraft(draft);
+    assert.equal(blocked.can_start, false, 'No desktop path may infer selection from the connected account.');
+    await assert.rejects(controller.startDraft(draft), /cannot start|account|customer|ready/i);
+    assert.equal(repository.listRuns(workspace.workspace_id).length, 0);
+  }
+  draft.reusable_configuration = { sources: { [SOURCE]: { included: true, task_id: task.task_id, date_policy: task.date_policy, customer_id: '1234567890' } } };
+  const conflictingInput = structuredClone(draft);
+  conflictingInput.reusable_configuration.sources[SOURCE].jobs = [{ ...expectedContext, customer_id: '456' }];
+  assert.equal((await controller.reviewDraft(conflictingInput)).can_start, false,
+    'Initial Review must reject conflicting Job accounts before rebuilding managed task Jobs.');
+  assert.equal(conflictingInput.reusable_configuration.sources[SOURCE].jobs[0].customer_id, '456');
+  for (const supported of DESKTOP_TASK_CATALOG.filter((candidate) => candidate.source_id === SOURCE)) {
+    const selected = structuredClone(draft);
+    Object.assign(selected.reusable_configuration.sources[SOURCE], { task_id: supported.task_id, date_policy: supported.date_policy });
+    const supportedReview = await controller.reviewDraft(selected);
+    assert.equal(supportedReview.can_start, true);
+    assert.equal(supportedReview.reviewed_draft.resolved_configuration.sources[SOURCE].jobs[0].customer_id, '1234567890');
+  }
   const review = await controller.reviewDraft(draft);
   assert.ok(review.reviewed_draft, 'Ads Review must return an absolute-date artifact');
   assert.equal(review.can_start, true);
   const reviewed = structuredClone(review.reviewed_draft);
   const reviewedSource = reviewed.resolved_configuration.sources[SOURCE];
+  assert.equal(reviewedSource.customer_id, '1234567890');
+  assert.equal(reviewedSource.jobs[0].customer_id, '1234567890');
+  const { isDesktopRunDraft, isDesktopReviewedRunDraft } = load('shared/desktop-multisource.js');
+  assert.equal(isDesktopRunDraft(draft), true);
+  assert.equal(isDesktopReviewedRunDraft(reviewed), true);
+  const conflicting = structuredClone(reviewed); conflicting.resolved_configuration.sources[SOURCE].jobs[0].customer_id = '456';
+  await assert.rejects(controller.startDraft(conflicting), /cannot start|ready|account|customer/i);
+  assert.equal(repository.listRuns(workspace.workspace_id).length, 0);
   assert.equal(reviewedSource.requested_date_start, '2026-08-31');
   assert.equal(reviewedSource.requested_date_end, '2026-09-16');
   assert.equal(reviewed.reference_date, '2026-09-17');
   clock = new Date('2026-09-18T12:00:00.000Z');
+  repository.upsertSourceConnection({ workspace_id: workspace.workspace_id, source_id: SOURCE, credential_ref: 'fixture-credential', safe_metadata: { customer_id: '9999999999' } });
+  await assert.rejects(controller.startDraft(reviewed), /account.*changed|customer|account/i);
+  assert.equal(repository.listRuns(workspace.workspace_id).length, 0);
+  repository.upsertSourceConnection({ workspace_id: workspace.workspace_id, source_id: SOURCE, credential_ref: 'fixture-credential', safe_metadata: { customer_id: '123-456-7890' } });
   const started = await controller.startDraft(review.reviewed_draft);
   assert.deepEqual(review.reviewed_draft, reviewed, 'Start must not mutate Review');
   assert.deepEqual(started.jobs[0].source_context, expectedContext);
@@ -75,6 +108,7 @@ test('ADS-REVIEW-BOUND-001: Review → atomic persisted Job → production reque
     requests.push({ url, ...options, body: JSON.parse(options.body) });
     // Official-schema-shaped deterministic fixture; this does not call Google.
     return Response.json([{ results: [{
+      customer: { id: '1234567890', timeZone: 'Europe/Istanbul' },
       searchTermView: { searchTerm: 'ficus', status: 'NONE' },
       campaign: { id: '1', name: 'Search Campaign', advertisingChannelType: 'SEARCH' },
       adGroup: { id: '2', name: 'Ficus Group' },
@@ -96,6 +130,32 @@ test('ADS-REVIEW-BOUND-001: Review → atomic persisted Job → production reque
   assert.deepEqual(dates.slice(1), [reviewedSource.requested_date_start, reviewedSource.requested_date_end]);
   assert.equal(repository.listJobs(started.run.run_id)[0].execution_status, 'COMPLETED');
   assert.deepEqual(repository.listJobs(started.run.run_id)[0].source_context, expectedContext);
+  const completedJob = repository.listJobs(started.run.run_id)[0];
+  const { StorageManager } = load('main/storage/storage-manager.js');
+  const artifact = repository.getArtifact(completedJob.accepted_artifact_id);
+  const raw = fs.readFileSync(new StorageManager(directories).resolveRunRelativePath(started.run.run_id, artifact.relative_path));
+  assert.equal(require('node:crypto').createHash('sha256').update(raw).digest('hex'), artifact.sha256);
+  assert.deepEqual(JSON.parse(raw.toString())[0].results[0].customer,
+    { id: '1234567890', timeZone: 'Europe/Istanbul' });
+  assert.equal(completedJob.source_context.customer_id, '1234567890');
+  assert.equal(Object.hasOwn(completedJob.source_context, 'time_zone'), false);
+  const { ProductionDataPackageLoader } = load('main/export/production-data-package-loader.js');
+  const { assembleBlogWritingPackV2Draft } = load('main/blog-writing-packs/blog-writing-pack-assembler.js');
+  const { BlogWritingPackStore } = load('main/blog-writing-packs/blog-writing-pack-store.js');
+  const { evaluateBlogWritingPackV2Readiness } = load('main/blog-writing-packs/blog-writing-pack-v2-readiness.js');
+  const { BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS } = load('shared/blog-writing-pack-v2-readiness.js');
+  const loader = new ProductionDataPackageLoader(repository, new StorageManager(directories));
+  const blogDraft = await assembleBlogWritingPackV2Draft({ package_id: 'desktop-ads-draft', application_version: 'test',
+    created_at: clock.toISOString(), selection: { recipe_version: 2, workspace_id: workspace.workspace_id,
+      selections: [{ run_id: started.run.run_id, job_id: completedJob.job_id, artifact_id: artifact.artifact_id }] } }, { repository, loader });
+  const store = new BlogWritingPackStore(path.join(workRoot, 'synthetic-blog-drafts')); await store.saveDraft(blogDraft);
+  const blogReadiness = await evaluateBlogWritingPackV2Readiness({ package_id: blogDraft.package_id, workspace_id: workspace.workspace_id,
+    requirements: BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS, evaluation_phase: 'PUBLICATION', evaluated_at: clock.toISOString() }, { store, repository, loader });
+  assert.equal(blogReadiness.field_checks[0].publication_time_context.selected_customer_id, '1234567890');
+  assert.deepEqual(blogReadiness.field_checks[0].publication_time_context.observed_customer_ids, ['1234567890']);
+  assert.equal(blogReadiness.field_checks[0].publication_time_context.time_zone, 'Europe/Istanbul');
+  assert.ok(blogReadiness.blockers.some((blocker) => blocker.requirement_id === 'ads_completed_days'),
+    'The desktop 17-day task must retain its independent Blog 30-day window blocker.');
   console.log(`ADS MOCK REQUEST: ${query}`);
 });
 
@@ -107,21 +167,47 @@ test('ADS-SOURCE-CONTEXT-001: source uses each explicit context and rejects unsu
     return { status: 200, body: [] };
   });
   const source = factory.createSearchTermsSource({ workspace_id: 'fixture', query: 'SELECT stale_constructor_query' });
-  const context = { source_id: SOURCE, source_context: expectedContext };
+  const context = { source_id: SOURCE, source_context: { ...expectedContext, customer_id: '123' } };
   assert.equal((await source.collect(context)).result_type, 'ARTIFACT_PRODUCED');
   assert.match(requests[0].body.query, /segments\.date BETWEEN '2026-08-31' AND '2026-09-16'/);
-  const second = { ...expectedContext, requested_date_start: '2026-09-01', requested_date_end: '2026-09-17' };
+  const second = { ...context.source_context, requested_date_start: '2026-09-01', requested_date_end: '2026-09-17' };
   await source.collect({ ...context, source_context: second });
   assert.match(requests[1].body.query, /segments\.date BETWEEN '2026-09-01' AND '2026-09-17'/);
   for (const invalid of [
-    { ...expectedContext, campaign_type: 'PERFORMANCE_MAX' },
-    { ...expectedContext, source_mode: 'campaign_search_term_view' },
-    { ...expectedContext, task_id: 'other-task' },
-    { ...expectedContext, requested_date_start: '2026-02-30' },
-    { ...expectedContext, requested_date_start: '2026-09-18' },
+    { ...context.source_context, campaign_type: 'PERFORMANCE_MAX' },
+    { ...context.source_context, source_mode: 'campaign_search_term_view' },
+    { ...context.source_context, task_id: 'other-task' },
+    { ...context.source_context, requested_date_start: '2026-02-30' },
+    { ...context.source_context, requested_date_start: '2026-09-18' },
     {},
   ]) {
     assert.equal((await source.collect({ ...context, source_context: invalid })).result_type, 'FAILED');
   }
   assert.equal(requests.length, 2, 'Invalid context must never reach the provider');
+});
+
+test('account-bound native validation rejects mismatched provider identity and missing/invalid timezone; legacy stays unassigned', async () => {
+  const { GoogleAdsSearchTermsValidator } = load('main/sources/google-ads/search-terms-validator.js');
+  const filename = path.join(workRoot, 'account-validator.json');
+  const row = { searchTermView: { searchTerm: 'synthetic', status: 'NONE' },
+    campaign: { id: '1', name: 'Synthetic', advertisingChannelType: 'SEARCH' }, adGroup: { id: '2', name: 'Synthetic' },
+    segments: { date: '2026-09-01', searchTermMatchType: 'EXACT' }, metrics: { clicks: '0' } };
+  const context = { run: { run_id: 'run' }, job: { source_id: SOURCE, run_id: 'run', source_context: { customer_id: '123' } },
+    artifact: { source_id: SOURCE, run_id: 'run' }, absolute_path: filename };
+  for (const [customer, expected] of [
+    [{ id: '123', timeZone: 'Europe/Istanbul' }, 'VALID'],
+    [{ id: '456', timeZone: 'Europe/Istanbul' }, 'INVALID_SCHEMA'],
+    [{ id: '123' }, 'INVALID_SCHEMA'],
+    [{ id: '123', timeZone: 'invalid/zone' }, 'INVALID_SCHEMA'],
+    [undefined, 'INVALID_SCHEMA'],
+  ]) {
+    fs.writeFileSync(filename, JSON.stringify([{ results: [{ ...row, customer }] }]));
+    assert.equal((await new GoogleAdsSearchTermsValidator().validate(context)).validation_status, expected);
+  }
+  fs.writeFileSync(filename, '[]');
+  assert.equal((await new GoogleAdsSearchTermsValidator().validate(context)).validation_status, 'NO_DATA');
+  const legacyContext = { ...context, job: { ...context.job, source_context: {} } };
+  fs.writeFileSync(filename, JSON.stringify([{ search_term: 'legacy', clicks: 0 }]));
+  assert.equal((await new GoogleAdsSearchTermsValidator().validate(legacyContext)).validation_status, 'VALID');
+  assert.deepEqual(legacyContext.job.source_context, {});
 });

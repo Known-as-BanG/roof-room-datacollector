@@ -226,6 +226,7 @@ async function main() {
           },
           'google-search-console-query-page': {
             included: true,
+            site_url: 'sc-domain:bitkimark.com',
             tasks: [
               {
                 task_id: 'gsc-query-page-current-28-days',
@@ -267,6 +268,11 @@ async function main() {
       sources['google-search-console-query-page'].date_ranges.length,
       2,
       'Query Page multi-task Review must retain two date ranges.',
+    );
+    assert.equal(
+      sources['google-search-console-query-page'].site_url,
+      'sc-domain:bitkimark.com',
+      'Query Page Review must freeze the explicitly selected Domain property.',
     );
 
     await gscController.startDraft(review.reviewed_draft);
@@ -1926,8 +1932,14 @@ async function main() {
     }
   }
 
+  const gscControllerConnection = [{
+    workspace_id: 'ws_a',
+    source_id: 'google-search-console-query-page',
+    credential_ref: 'gsc-fixture',
+    safe_metadata: { site_url: 'sc-domain:bitkimark.com' },
+  }];
   const gscReviewController =
-    createFixture().controller;
+    createFixture(undefined, undefined, gscControllerConnection).controller;
 
   const gscCurrentDraft =
     await gscReviewController.createDraft({
@@ -1945,6 +1957,8 @@ async function main() {
       'google-search-console-query-page': {
         included:
           true,
+        site_url:
+          'sc-domain:bitkimark.com',
         task_id:
           'gsc-current-90-days',
         date_policy:
@@ -1979,6 +1993,8 @@ async function main() {
           'google-search-console-query-page': {
             included:
               true,
+            site_url:
+              'sc-domain:bitkimark.com',
             task_id:
               'gsc-current-90-days',
             date_policy:
@@ -1991,6 +2007,8 @@ async function main() {
           'google-search-console-query-page': {
             included:
               true,
+            site_url:
+              'sc-domain:bitkimark.com',
             task_id:
               'gsc-current-90-days',
             date_policy:
@@ -2024,6 +2042,8 @@ async function main() {
   const driftFixture =
     createFixture(
       () => driftClock,
+      undefined,
+      gscControllerConnection,
     );
 
   const driftDraft =
@@ -2042,6 +2062,8 @@ async function main() {
       'google-search-console-query-page': {
         included:
           true,
+        site_url:
+          'sc-domain:bitkimark.com',
         task_id:
           'gsc-current-90-days',
         date_policy:
@@ -2129,6 +2151,8 @@ async function main() {
   const longFixture =
     createFixture(
       () => longClock,
+      undefined,
+      gscControllerConnection,
     );
 
   const gscLongDraft =
@@ -2148,6 +2172,8 @@ async function main() {
       'google-search-console-query-page': {
         included:
           true,
+        site_url:
+          'sc-domain:bitkimark.com',
         task_id:
           'gsc-long-16-months',
         date_policy:
@@ -2721,6 +2747,7 @@ async function main() {
       {
         source_id:
           'google-search-console-query-page',
+        site_url: null,
         credential_status: 'AVAILABLE',
         readiness_status:
           'MANUAL_ACTION_REQUIRED',
@@ -2731,6 +2758,7 @@ async function main() {
         credential_status: 'MISSING',
         readiness_status:
           'CONNECTION_REQUIRED',
+        customer_id: null,
       },
       {
         source_id:

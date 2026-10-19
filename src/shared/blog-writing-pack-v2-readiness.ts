@@ -1,4 +1,5 @@
 import type { BlogWritingPackV2ResolvedEvidence } from './blog-writing-pack-v2-selection';
+import type { SerpApiFreshnessEvaluation } from './serpapi';
 
 export const BLOG_WRITING_PACK_V2_MANDATORY_DATASETS = [
   'SEARCH_TERMS', 'QUERY_PAGE', 'KEYWORD_HISTORICAL_METRICS', 'PRODUCTS',
@@ -41,8 +42,8 @@ export const BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS: BlogWritingPackV2Require
     KEYWORD_HISTORICAL_METRICS: { open_decisions: ['historical_scope'], required_source_changes: [] },
     PRODUCTS: { open_decisions: ['category', 'price', 'availability', 'freshness'], required_source_changes: ['stock_status', 'product_status', 'currency_context'] },
     SITEMAP_URLS: { open_decisions: ['scope', 'freshness'], required_source_changes: ['page_type', 'title', 'status'] },
-    GOOGLE_SERP: { open_decisions: ['capture_date', 'freshness'], required_source_changes: [] },
-    GA4_CONTENT_PERFORMANCE: { open_decisions: ['users', 'average_engagement_time', 'reporting_window'], required_source_changes: ['users', 'average_engagement_time'] },
+    GOOGLE_SERP: { open_decisions: [], required_source_changes: [] },
+    GA4_CONTENT_PERFORMANCE: { open_decisions: [], required_source_changes: [] },
   },
   gsc_requested_dates: null,
   ads_requested_dates: null,
@@ -57,8 +58,9 @@ export type BlogWritingPackV2BlockerCode =
 
 export interface BlogWritingPackV2FieldObservation {
   field: string;
-  status: 'OBSERVED' | 'NULL' | 'ABSENT' | 'UNRESOLVED' | 'UNSUPPORTED';
+  status: 'OBSERVED' | 'DERIVED' | 'NULL' | 'ABSENT' | 'UNRESOLVED' | 'UNSUPPORTED';
   observed_count: number;
+  derived_count?: number;
   null_count: number;
   absent_count: number;
 }
@@ -77,6 +79,8 @@ export interface BlogWritingPackV2ReadinessBlocker {
 
 export interface BlogWritingPackV2ReadinessEvaluation {
   evaluation_version: 1;
+  evaluation_phase?: 'PUBLICATION';
+  evaluated_at?: string;
   recipe_version: 2;
   draft_package_id: string;
   workspace_id: string;
@@ -92,9 +96,22 @@ export interface BlogWritingPackV2ReadinessEvaluation {
       property_id: string; requested_start_date: string; requested_end_date: string;
       dimension_headers: string[]; metric_headers: string[];
       provider_metadata: { currency_code: string | null; time_zone: string | null };
+      reporting_window?: {
+        reference_at: string; reference_origin: 'DRAFT_CREATED_AT' | 'PACKAGE_CREATED_AT';
+        time_zone: string; time_zone_origin: 'PROVIDER_RESPONSE_METADATA';
+        start_date: string; end_date: string;
+      };
+      metric_provenance?: {
+        users: { origin: 'PROVIDER_METRIC_ALIAS'; metric: 'totalUsers' };
+        user_engagement_duration: { origin: 'PROVIDER_METRIC'; metric: 'userEngagementDuration'; unit: 'seconds' };
+        average_engagement_time: { origin: 'DERIVED'; expression: 'userEngagementDuration / sessions'; unit: 'seconds' };
+      };
     };
+    serp_freshness?: SerpApiFreshnessEvaluation;
+    gsc_date_coverage?: { status: string; observed_dates: string[]; missing_dates: string[]; response_received_at?: string };
+    publication_time_context?: Record<string, unknown>;
     serp_provenance?: {
-      query: 'REQUEST_DIMENSION_VERIFIED_BY_PROVIDER'; capture_date: 'UNAPPROVED';
+      query: 'REQUEST_DIMENSION_VERIFIED_BY_PROVIDER'; capture_date: 'DERIVED_FROM_COLLECTOR_RESPONSE_RECEIPT' | 'ACQUISITION_UNAVAILABLE';
       position: 'PROVIDER_ORGANIC_POSITION_ONLY'; domain: 'DERIVED_FROM_OBSERVED_URL';
     };
   }>;

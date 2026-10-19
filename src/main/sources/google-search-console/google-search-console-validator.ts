@@ -1,3 +1,4 @@
+import { parseGscDateCoverage } from './gsc-date-coverage';
 import { readFile } from 'node:fs/promises';
 import type {
   CollectionValidationContext,
@@ -68,6 +69,9 @@ implements CollectionValidator {
         );
       }
 
+      if (this.sourceId === GSC_QUERY_PAGE_SOURCE_ID && context.acquisition_metadata?.gsc_date_coverage !== undefined) {
+        parseGscDateCoverage(context.acquisition_metadata.gsc_date_coverage);
+      }
       let count = 0;
 
       for (const page of body) {

@@ -74,13 +74,20 @@ const snapshotRequirements = (input: BlogWritingPackV2Requirements): BlogWriting
 };
 
 export const evaluateBlogWritingPackV2Readiness = async (
-  input: { package_id: string; workspace_id: string; requirements: BlogWritingPackV2Requirements },
+  input: { package_id: string; workspace_id: string; requirements: BlogWritingPackV2Requirements; evaluated_at?: string; evaluation_phase?: 'PUBLICATION' },
   dependencies: Parameters<typeof resolveBlogWritingPackV2Selections>[1] & {
     store: Pick<BlogWritingPackStore, 'readDraft'>;
     loader: Pick<ProductionDataPackageLoader, 'verifyAcceptedJobArtifact' | 'readAcceptedJobArtifact'>;
   },
 ): Promise<BlogWritingPackV2ReadinessEvaluation> => {
   const requirements = snapshotRequirements(input.requirements);
+  const evaluatedAt = input.evaluated_at;
+  const publicationAt = input.evaluation_phase === 'PUBLICATION' ? evaluatedAt : undefined;
+  if (input.evaluation_phase === 'PUBLICATION' && (typeof publicationAt !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(publicationAt)
+    || !Number.isFinite(Date.parse(publicationAt)) || new Date(publicationAt).toISOString() !== publicationAt)) {
+    throw new Error('Publication readiness requires an explicit UTC creation timestamp.');
+  }
   const draft = await dependencies.store.readDraft(input.package_id);
   if (draft.workspace_id !== input.workspace_id) throw new Error('Blog v2 draft is outside the selected Workspace.');
   const blockers: BlogWritingPackV2ReadinessBlocker[] = [];
@@ -134,18 +141,34 @@ export const evaluateBlogWritingPackV2Readiness = async (
     try {
       const loaded = await dependencies.loader.readAcceptedJobArtifact(evidence.run_id, evidence.job_id);
       if (loaded.artifact.artifact_id !== evidence.artifact_id || loaded.artifact.sha256 !== evidence.artifact_sha256
-        || loaded.artifact.byte_size !== evidence.artifact_byte_size || !isDeepStrictEqual(loaded.requested_context, evidence.requested_context)) {
+        || loaded.artifact.byte_size !== evidence.artifact_byte_size || !isDeepStrictEqual(loaded.requested_context, evidence.requested_context)
+        || !isDeepStrictEqual(loaded.serp_acquisition, evidence.serp_acquisition)
+        || !isDeepStrictEqual(loaded.gsc_date_coverage, evidence.gsc_date_coverage)) {
         add(evidence.dataset_type, [evidence], 'MEMBERSHIP_CHANGED', 'frozen_provenance',
           'Exact frozen accepted artifact and context', 'Evidence changed during field inspection.', 'Review evidence without changing this draft.');
         continue;
       }
       const inspected = inspectBlogWritingPackV2Fields(evidence.source_id,
         ['KEYWORD_HISTORICAL_METRICS', 'PRODUCTS', 'SITEMAP_URLS', 'GOOGLE_SERP', 'GA4_CONTENT_PERFORMANCE'].includes(evidence.dataset_type) ? loaded.bytes
-          : JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(loaded.bytes)), loaded.requested_context, evidence.acquired_at);
+          : JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(loaded.bytes)), loaded.requested_context, evidence.acquired_at, publicationAt ?? draft.created_at,
+        { acquisition: loaded.serp_acquisition, evaluated_at: evaluatedAt === undefined ? draft.created_at : evaluatedAt,
+          reference_origin: publicationAt !== undefined ? 'PACKAGE_CREATED_AT' : evaluatedAt === undefined ? 'DRAFT_CREATED_AT' : 'EXPLICIT_DRAFT_EVALUATION' }, publicationAt, loaded.gsc_date_coverage_evidence);
       field_checks.push({ run_id: evidence.run_id, job_id: evidence.job_id, artifact_id: evidence.artifact_id,
         dataset_type: evidence.dataset_type, row_count: inspected.rows.length, fields: inspected.fields,
         ...(inspected.serp_provenance ? { serp_provenance: inspected.serp_provenance } : {}),
+        ...(inspected.serp_freshness ? { serp_freshness: inspected.serp_freshness } : {}),
+        ...(inspected.publication_time_context ? { publication_time_context: inspected.publication_time_context } : {}),
+        ...(inspected.gsc_date_coverage ? { gsc_date_coverage: inspected.gsc_date_coverage } : {}),
         ...(inspected.ga4_context ? { ga4_context: inspected.ga4_context } : {}) });
+      for (const issue of inspected.publication_issues ?? []) {
+        add(evidence.dataset_type, [evidence], issue.code, issue.requirement_id, 'Approved provider-backed publication-time requirement', issue.actual,
+          'Resolve the exact source evidence or calendar/finality contract gap; do not reuse a draft-time pass or invent observations.');
+      }
+      for (const issue of inspected.serp_issues ?? []) {
+        add(evidence.dataset_type, [evidence], issue.code, issue.requirement_id,
+          'Verified collector receipt and an explicit UTC draft reference with 0 <= age <= 604800000 milliseconds', issue.actual,
+          'Inspect the exact acquisition provenance and evaluation time; explicitly select different evidence in a new draft if necessary.');
+      }
       for (const issue of inspected.ga4_issues ?? []) {
         add(evidence.dataset_type, [evidence], issue.code, issue.requirement_id, 'Approved provider-backed Content Performance meaning and scope',
           issue.actual, 'Resolve the exact GA4 source or semantic gap without substituting metrics or reconstructing observations.');
@@ -184,8 +207,11 @@ export const evaluateBlogWritingPackV2Readiness = async (
       }
     } catch (error: unknown) {
       if (error instanceof GoogleAnalytics4EvidenceError) {
-        add(evidence.dataset_type, [evidence], error.code, error.requirement_id, 'Compatible frozen GA4 Content Performance request context',
-          'Selected property, report or requested window is incompatible.', 'Inspect the exact selected evidence without changing its context or raw bytes.');
+        add(evidence.dataset_type, [evidence], error.code, error.requirement_id, 'Compatible frozen GA4 property/request and provider-timezone/reference context',
+          error.requirement_id === 'ga4_timezone' ? 'Provider timezone observations are invalid or conflicting.'
+            : error.requirement_id === 'ga4_reference_time' ? 'Draft creation time is not a valid explicit reference instant.'
+              : 'Selected property, report or requested window is incompatible.',
+          'Inspect the exact selected evidence without changing its context or raw bytes.');
         continue;
       }
       if (error instanceof SerpApiContextError) {
@@ -220,6 +246,17 @@ export const evaluateBlogWritingPackV2Readiness = async (
 
   const datasets: BlogWritingPackV2ReadinessEvaluation['datasets'] = BLOG_WRITING_PACK_V2_MANDATORY_DATASETS.map((dataset_type) => {
     const evidence = draft.selected_evidence.filter((item) => item.dataset_type === dataset_type);
+    if (dataset_type === 'GA4_CONTENT_PERFORMANCE') {
+      const contexts = field_checks.filter((check) => check.dataset_type === dataset_type).flatMap((check) => check.ga4_context ? [check.ga4_context] : []);
+      if (new Set(contexts.map((context) => context.property_id)).size > 1) {
+        add(dataset_type, evidence, 'EVIDENCE_INVALID', 'ga4_property_scope', 'One explicitly bound GA4 property',
+          'Selected Content reports refer to different acquisition properties.', 'Select compatible evidence without rewriting frozen property identities.');
+      }
+      if (new Set(contexts.flatMap((context) => context.reporting_window ? [context.reporting_window.time_zone] : [])).size > 1) {
+        add(dataset_type, evidence, 'EVIDENCE_INVALID', 'ga4_timezone', 'Consistent provider-observed property timezone',
+          'Selected Content reports provide conflicting property timezones.', 'Select compatible evidence without inventing a timezone or merging reports.');
+      }
+    }
     if (evidence.length === 0) {
       add(dataset_type, [], 'DATASET_MISSING', 'mandatory_presence', 'Selected accepted evidence for this mandatory family',
         'No evidence selected.', 'Explicitly select compatible accepted evidence and assemble a new draft.');
@@ -323,6 +360,7 @@ export const evaluateBlogWritingPackV2Readiness = async (
 
   return {
     evaluation_version: 1, recipe_version: 2, draft_package_id: draft.package_id, workspace_id: draft.workspace_id,
+    ...(publicationAt === undefined ? {} : { evaluation_phase: 'PUBLICATION' as const, evaluated_at: publicationAt }),
     coverage_scope: 'EXPLICIT_REQUIREMENTS_ONLY',
     coverage_status: datasets.every((item) => item.coverage_status === 'SATISFIED') && !blockers.some((item) => item.mandatory)
       ? 'COMPLETE' : datasets.some((item) => item.usable_count > 0) ? 'PARTIAL' : 'NOT_READY',

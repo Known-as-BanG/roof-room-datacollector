@@ -77,17 +77,19 @@ const fixture = () => {
       artifact_id, validation_status: 'VALID' });
     return { run_id, job_id, artifact_id };
   };
-  const persist = async (selections) => {
+  const persist = async (selections, created_at = '2026-10-15T12:00:00.000Z') => {
     const draft = await assembleBlogWritingPackV2Draft({ package_id: 'draft', application_version: '1.0.0',
-      created_at: '2026-10-15T12:00:00.000Z', selection: { recipe_version: 2, workspace_id: 'workspace_one', selections },
+      created_at, selection: { recipe_version: 2, workspace_id: 'workspace_one', selections },
     }, { repository, loader });
     await store.saveDraft(draft);
     return draft;
   };
-  const evaluate = (requirements = syntheticRequirements()) => evaluateBlogWritingPackV2Readiness({
+  const evaluate = (requirements = syntheticRequirements(), evaluated_at, evaluation_phase) => evaluateBlogWritingPackV2Readiness({
     package_id: 'draft', workspace_id: 'workspace_one', requirements,
+    ...(evaluated_at === undefined ? {} : { evaluated_at }),
+    ...(evaluation_phase === undefined ? {} : { evaluation_phase }),
   }, { store, repository, loader });
-  return { root, store, runs, jobs, artifacts, attempts, validations, add, persist, evaluate };
+  return { root, store, loader, repository, runs, jobs, artifacts, attempts, validations, add, persist, evaluate };
 };
 
 

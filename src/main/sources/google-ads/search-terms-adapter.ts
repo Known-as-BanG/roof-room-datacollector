@@ -142,8 +142,39 @@ export const normalizeSearchTerms = (body: unknown): AdsSearchTermRow[] => {
   }));
 };
 
+export const inspectSearchTermsAccountEvidence = (body: unknown, selectedCustomer: unknown) => {
+  const topLevel = requireArray(body, 'Search Terms response');
+  const legacy = topLevel.length > 0 && Object.hasOwn(requireApiObject(topLevel[0], 'Search Terms response[0]'), 'search_term');
+  const rawRows = legacy ? topLevel.map((row) => requireApiObject(row, 'Search Terms row')) : flattenGoogleAdsSearchStream(body);
+  const issues: Array<{ code: 'EVIDENCE_INVALID' | 'FIELD_OBSERVATION_REQUIRED'; requirement_id: string; actual: string }> = [];
+  const zones = new Set<string>();
+  const observedZones = new Set<string>();
+  const customers = new Set<string>();
+  let invalidZone = false;
+  // Legacy flat rows have no established provider-native customer metadata contract.
+  for (const row of legacy ? [] : rawRows) {
+    const customer = row.customer !== null && typeof row.customer === 'object' ? row.customer as Record<string, unknown> : {};
+    if (typeof customer.id === 'string' && /^\d+$/u.test(customer.id)) customers.add(customer.id);
+    const zone = customer.timeZone;
+    if (zone === undefined || zone === null || zone === '') continue;
+    try {
+      if (typeof zone !== 'string') throw new Error('Invalid timezone.');
+      observedZones.add(zone);
+      zones.add(new Intl.DateTimeFormat('en', { timeZone: zone }).resolvedOptions().timeZone);
+    } catch { invalidZone = true; }
+  }
+  if (typeof selectedCustomer !== 'string' || !/^\d+$/u.test(selectedCustomer) || customers.size !== 1 || !customers.has(selectedCustomer)
+    || rawRows.some((row) => !row.customer || (row.customer as Record<string, unknown>).id !== selectedCustomer)) {
+    issues.push({ code: 'EVIDENCE_INVALID', requirement_id: 'ads_account_scope', actual: 'Provider account identity must be observed and agree with the explicitly selected account; request identity alone cannot establish timezone ownership.' });
+  }
+  if (invalidZone || zones.size > 1) issues.push({ code: 'EVIDENCE_INVALID', requirement_id: 'ads_account_timezone', actual: 'Account timezone observations are invalid or conflicting.' });
+  else if (zones.size === 0) issues.push({ code: 'FIELD_OBSERVATION_REQUIRED', requirement_id: 'ads_account_timezone', actual: 'No provider-observed Ads account timezone is available; lifecycle/request context is not a substitute.' });
+  return { observed_customer_ids: [...customers], observed_time_zones: [...observedZones],
+    time_zone: !invalidZone && zones.size === 1 ? [...zones][0] : undefined, issues };
+};
+
 // Presence is inspected before normalization can turn absent provider fields into null.
-export const inspectSearchTermsFields = (body: unknown) => {
+export const inspectSearchTermsFields = (body: unknown, requested_context?: unknown, publication_at?: string) => {
   const rows = normalizeSearchTerms(body);
   const topLevel = requireArray(body, 'Search Terms response');
   const legacy = topLevel.length > 0 && Object.hasOwn(requireApiObject(topLevel[0], 'Search Terms response[0]'), 'search_term');
@@ -174,7 +205,36 @@ export const inspectSearchTermsFields = (body: unknown) => {
     }
     return [field, value !== undefined];
   })));
-  return { rows, presence };
+  const publication_issues: Array<{ code: 'EVIDENCE_INVALID' | 'FIELD_OBSERVATION_REQUIRED' | 'WINDOW_MISMATCH'; requirement_id: string; actual: string }> = [];
+  let publication_time_context: Record<string, unknown> | undefined;
+  if (publication_at !== undefined) {
+    const requested = requested_context as Record<string, unknown> | null;
+    const selectedCustomer = requested?.customer_id;
+    const account = inspectSearchTermsAccountEvidence(body, selectedCustomer);
+    publication_issues.push(...account.issues);
+    publication_time_context = { reference_at: publication_at, reference_origin: 'PACKAGE_CREATED_AT',
+      selected_customer_id: selectedCustomer ?? null, requested_context_origin: 'FROZEN_JOB_CONTEXT',
+      requested_date_start: requested?.requested_date_start ?? null, requested_date_end: requested?.requested_date_end ?? null,
+      observed_customer_ids: account.observed_customer_ids, customer_identity_origin: 'PROVIDER_RESPONSE_CUSTOMER_ID',
+      observed_time_zones: account.observed_time_zones, timezone_origin: 'PROVIDER_RESPONSE_CUSTOMER',
+      observed_performance_dates: [...new Set(rows.flatMap((row) => row.performance_date === null ? [] : [row.performance_date]))] };
+    if (account.time_zone !== undefined) {
+      const time_zone = account.time_zone;
+      const parts = new Intl.DateTimeFormat('en', { timeZone: time_zone, year: 'numeric', month: '2-digit', day: '2-digit', calendar: 'iso8601', numberingSystem: 'latn' }).formatToParts(new Date(publication_at));
+      const value = (type: string) => Number(parts.find((part) => part.type === type)!.value);
+      const today = Date.UTC(value('year'), value('month') - 1, value('day'));
+      const start_date = new Date(today - 30 * 86_400_000).toISOString().slice(0, 10);
+      const end_date = new Date(today - 86_400_000).toISOString().slice(0, 10);
+      publication_time_context = { ...publication_time_context, time_zone, start_date, end_date };
+      if (requested?.requested_date_start !== start_date || requested?.requested_date_end !== end_date) publication_issues.push({ code: 'WINDOW_MISMATCH', requirement_id: 'ads_completed_days', actual: 'Requested dates are not the last 30 completed account-calendar days at package creation.' });
+      if (rows.some((row) => row.performance_date === null)) publication_issues.push({ code: 'FIELD_OBSERVATION_REQUIRED', requirement_id: 'ads_performance_dates', actual: 'Missing observed performance dates cannot establish dated coverage or zero activity.' });
+      if (rows.some((row) => row.performance_date !== null && (row.performance_date < start_date || row.performance_date > end_date))) publication_issues.push({ code: 'WINDOW_MISMATCH', requirement_id: 'ads_observed_dates', actual: 'Observed performance dates are outside the publication window.' });
+    }
+  }
+  return { rows, presence, derivations: {
+    cost: { expression: 'observed cost_micros / 1000000', approved_for_blog: true },
+    average_cpc: { expression: 'observed average_cpc_micros / 1000000', approved_for_blog: true },
+  }, ...(publication_at === undefined ? {} : { publication_issues, publication_time_context }) };
 };
 
 export const fetchSearchTerms = async (

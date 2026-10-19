@@ -431,6 +431,7 @@ const main = async () => {
         window.__workspaceConnectionState = [
           {
             source_id: 'google-search-console-query-page',
+            site_url: 'sc-domain:bitkimark.com',
             credential_status: 'AVAILABLE',
             readiness_status: 'MANUAL_ACTION_REQUIRED',
             credential_ref: 'cred:do-not-render',
@@ -440,6 +441,7 @@ const main = async () => {
             source_id: 'google-ads-search-terms',
             credential_status: 'MISSING',
             readiness_status: 'CONNECTION_REQUIRED',
+            customer_id: '1234567890',
           },
           {
             source_id: 'google-ads-search-reporting',
@@ -4634,11 +4636,11 @@ const main = async () => {
         },
       );
 
-    assert.equal(
-      await gscReviewButton.isEnabled(),
-      true,
-      'GSC Current Quick Run must be reviewable without a file input.',
-    );
+    const gscProperty = page.getByLabel('GSC Query × Page property', { exact: true });
+    assert.equal(await gscProperty.inputValue(), '', 'A connected property must not select itself.');
+    assert.equal(await gscReviewButton.isEnabled(), false, 'Review requires explicit property selection.');
+    await gscProperty.selectOption('sc-domain:bitkimark.com');
+    assert.equal(await gscReviewButton.isEnabled(), true);
 
     await page.evaluate(() => {
       window.__forcePlanningBlocked = true;
@@ -4702,6 +4704,7 @@ const main = async () => {
       {
         included:
           true,
+        site_url: 'sc-domain:bitkimark.com',
         task_id:
           'gsc-current-90-days',
         date_policy:
@@ -4813,11 +4816,11 @@ const main = async () => {
         },
       );
 
-    assert.equal(
-      await gscLongReviewButton.isEnabled(),
-      true,
-      'GSC Long Quick Run must be reviewable without a file input.',
-    );
+    const gscLongProperty = page.getByLabel('GSC Query × Page property', { exact: true });
+    assert.equal(await gscLongProperty.inputValue(), '');
+    assert.equal(await gscLongReviewButton.isEnabled(), false);
+    await gscLongProperty.selectOption('sc-domain:bitkimark.com');
+    assert.equal(await gscLongReviewButton.isEnabled(), true);
 
     await gscLongReviewButton.click();
 
@@ -4843,6 +4846,7 @@ const main = async () => {
       {
         included:
           true,
+        site_url: 'sc-domain:bitkimark.com',
         task_id:
           'gsc-long-16-months',
         date_policy:
@@ -5245,14 +5249,20 @@ const main = async () => {
     assert.equal(await page.getByText('Scope: SEARCH campaigns · search_term_view', { exact: true }).count(), 1);
     assert.equal(await page.getByText('Date policy: 17-day reporting lag through yesterday', { exact: true }).count(), 1);
     const adsReviewButton = page.getByRole('button', { name: 'Review Quick Run', exact: true });
-    assert.equal(await adsReviewButton.isEnabled(), true, 'Configured Ads task must be reviewable');
+    assert.equal(await adsReviewButton.isEnabled(), false, 'Connected account must not be selected automatically.');
+    const adsAccount = page.getByLabel('Search Terms customer account', { exact: true });
+    assert.equal(await adsAccount.inputValue(), '');
+    await adsAccount.selectOption('1234567890');
+    assert.equal(await adsReviewButton.isEnabled(), true, 'An explicit account selection enables Review.');
     await adsReviewButton.click();
     await page.getByRole('heading', { name: 'Review Quick Run', exact: true }).waitFor();
     assert.deepEqual(await page.evaluate(() => window.__reviewedDesktopDraft.reusable_configuration.sources['google-ads-search-terms']), {
       included: true, task_id: 'google-ads-search-terms', date_policy: 'TODAY_MINUS_17_TO_YESTERDAY',
+      customer_id: '1234567890',
     }, 'Ads renderer must send task identity and date policy to Review');
     assert.equal(await page.getByText('Reference date: 2026-09-17', { exact: true }).count(), 1);
     assert.equal(await page.getByText('Resolved range: 2026-08-31 → 2026-09-16', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('Selected account: 1234567890', { exact: true }).count(), 1);
     await page.getByRole('button', { name: 'Start Run', exact: true }).click();
     assert.deepEqual(await page.evaluate(() => window.__startedDesktopDraft), await page.evaluate(() => window.__reviewedDesktopArtifact), 'Ads Start must forward the exact reviewed artifact');
     console.log('PASS ADS-REVIEW-UI-001: Ads task sends date policy and starts the exact reviewed artifact');
@@ -6570,6 +6580,14 @@ const main = async () => {
       'Preset Start must not persist the run-scoped İkas file into reusable intent.',
     );
 
+    await page.getByRole('button', { name: 'TASKS', exact: true }).click();
+    const gscPresetTaskCard = page.getByTestId('task-card')
+      .filter({ hasText: 'GSC — Current 90 Days' });
+    await gscPresetTaskCard.getByText('READY', { exact: true }).waitFor();
+    await gscPresetTaskCard.click();
+    await page.getByLabel('GSC Query × Page property', { exact: true })
+      .selectOption('sc-domain:bitkimark.com');
+
     await page.getByRole('button', { name: 'PRESETS', exact: true }).click();
     const newPreset = page.getByTestId('new-preset');
     await newPreset.getByLabel('New preset name').fill('Fresh GSC Preset');
@@ -6583,6 +6601,10 @@ const main = async () => {
     assert.equal(
       await page.evaluate(() => window.__createdDesktopPresetInput.reusable_configuration.sources['google-search-console-query-page'].task_id),
       'gsc-current-90-days',
+    );
+    assert.equal(
+      await page.evaluate(() => window.__createdDesktopPresetInput.reusable_configuration.sources['google-search-console-query-page'].site_url),
+      'sc-domain:bitkimark.com',
     );
     page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Delete', exact: true }).last().click();

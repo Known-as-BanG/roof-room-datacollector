@@ -70,6 +70,7 @@ export interface DesktopWorkspaceConnectionView {
   credential_status: DesktopCredentialStatus;
   readiness_status: DesktopReadinessStatus;
   customer_id?: string | null;
+  site_url?: string | null;
 }
 
 export type DesktopReadinessRemediation =

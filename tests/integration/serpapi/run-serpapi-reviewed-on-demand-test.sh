@@ -15,6 +15,9 @@ npx tsc \
   src/main/sources/serpapi/serpapi-request.ts \
   src/main/storage/database.ts \
   src/main/storage/state-repository.ts \
+  src/main/blog-writing-packs/blog-writing-pack-assembler.ts \
+  src/main/blog-writing-packs/blog-writing-pack-store.ts \
+  src/main/export/production-data-package-loader.ts \
   --rootDir src \
   --outDir "$TMP_ROOT/build" \
   --module commonjs \

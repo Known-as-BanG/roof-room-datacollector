@@ -1,5 +1,138 @@
 # Blog v2 Slice 3B.2B.5 — GA4 Content Performance compliance
 
+## Follow-up plan — Property/timezone/window compliance (2026-10-17)
+
+Authority: user's focused Property & Date Window Compliance task. Preserve the
+sixteen existing modified files and reports/. No live provider call, production
+Run, migration, export, commit, push, new Core architecture or publication.
+
+Already present: explicit frozen property versus acquisition-request equality in
+the inspector; exact absolute request-date equality, immutable membership/integrity,
+provider timezone preservation, versioned native metrics, full row-count checks and
+placeholder handling. Gaps: source validation rejects the otherwise supported
+property_id context; provider timezone is not validated across pages; no completed-
+28-day calculation exists; multi-Job property/timezone conflicts are only generic.
+
+Reference decision: use the existing immutable draft.created_at instant to evaluate
+the package's last 28 completed property-calendar days. It is an evaluation
+reference, not provider observation time. Use accepted response metadata.timeZone
+only, validate all supplied timezone observations and reject missing/invalid or
+conflicting evidence. Never consult host timezone, current connections or Date.now.
+Frozen Job property_id is the existing explicit selection; do not invent a second
+property selector or repair legacy missing context. Preserve raw/requested dates.
+
+Affected paths: existing GA4 validator and field inspector; existing Blog v2 field
+helper/evaluator and shared readiness types/profile; existing GA4 compliance and
+validation tests plus readiness fixture/assertions; canonical DATA_CONTRACTS.md and
+PROJECT_HANDOFF.md. No new plan tree or helper module.
+
+- [x] RED: explicit property validation, provider timezone provenance/absence/
+  conflict, calendar month/year/leap/DST/midnight boundaries, wrong endpoints,
+  invalid reference, cross-Job conflicts, legacy non-repair and unchanged evidence.
+- [x] GREEN: small GA4-local calendar calculation; reuse existing property checks;
+  add read-only expected-window provenance and per-evidence blockers. Resolve only
+  the now-implemented reporting_window profile decision; preserve coverage blockers.
+- [x] Verify focused GA4 compliance, full GA4 source gate, affected Blog v2 suites,
+  loader, TypeScript, scoped lint and diff check; review and document actual results.
+
+Acceptance: supported explicit property + trustworthy timezone + exact last-28-day
+request is deterministically checked; missing/conflicting inputs cannot pass by
+clearing decision lists. No reconstructed dates, missing-day zeros, metric changes,
+historical assignments, raw/draft mutation or provider/delivery acceptance claim.
+
+Property/window execution evidence (Node 24.19.0; synthetic fixtures only):
+
+- Initial RED: five new cases failed while all previous 24 metric/pagination cases
+  passed. The source validation test also reproduced explicit property context
+  being rejected as QUERY_MISMATCH. Final GA4 compliance: 29/29 PASS.
+- Calendar assertions cover month/year boundaries, leap February, explicit instant
+  offsets, LA midnight and both NY daylight-saving transitions. Wrong shifted,
+  27/29-day or today-including requests, missing/invalid timezone, ambiguous draft
+  timestamp, cross-page/cross-Job conflicts and legacy non-repair are covered.
+- Full GA4 source gate PASS. Other Blog v2 suites: readiness 10/10, field compliance
+  13/13, selection 7/7, draft 8/8, KWP 14/14, İkas 13/13, Sitemap 12/12 and SERP
+  14/14 PASS. The intentionally stale synthetic GA4 request adds a calendar-window
+  blocker: its total is now 22 instead of 21; the exact WINDOW_MISMATCH is asserted.
+- Accepted-artifact loader PASS; full `npx tsc --noEmit` PASS; scoped worktree-local
+  ESLint (`--no-eslintrc --config .eslintrc.json`) on all five changed TS files PASS.
+  Final focused/static checks also passed after reusing parsed pages and clarifying
+  safe blocker messages. Independent read-only review found no actionable issues.
+- Task-start snapshots confirm seven other files of previous metric/compliance
+  WIP remain byte-identical; twelve existing files changed in this follow-up.
+  No reports/ access, new Markdown file, acquisition/request/metric change, Core
+  change, real-provider call, production access, export, migration, commit or push.
+
+Supported evidence now has deterministic property/timezone/window compliance.
+Missing legacy identity or timezone remains blocked rather than reconstructed.
+Coverage/population and real-provider/delivery acceptance remain separate.
+
+## Follow-up plan — Content metric completion (2026-10-17)
+
+Authority: user's GA4 Content Performance Metric Completion request and the approved
+delivery requirements in DATA_CONTRACTS.md. Implement this focused follow-up inline;
+no new architecture, Core change, migration, live request, export, commit or push.
+Preserve prior DATA_CONTRACTS.md/PROJECT_HANDOFF.md changes and reports/.
+
+Inspected: the Content request has eleven metrics; the normalizer is header-driven;
+the validator locks exact headers/types/order and bundle version 1; the source-local
+inspector always blocks users/time. Paid Funnel is independent. Existing source,
+Blog compliance and accepted-loader tests provide the relevant verification seams.
+
+Compatibility decision: new Content acquisition uses raw bundle version 2 with
+the existing eleven metrics followed by totalUsers (TYPE_INTEGER) and
+userEngagementDuration (TYPE_SECONDS). Version 1 retains its exact legacy schema
+and normalized row shape; Paid Funnel remains version 1. No historical metric is
+relabeled. Versioned exact validation prevents truncated new reports being mistaken
+for legacy evidence. Source-normalized total_users/user_engagement_duration remain
+separate from downstream users and derived average_engagement_time.
+
+Affected files: shared/google-analytics-4.ts, GA4 request/parser/validator/field
+inspector, the existing Blog requirements profile, existing GA4 request/runtime/
+compliance tests and runner/fixtures only as needed. Canonical contracts and handoff
+will record actual verified progress without deleting earlier approved requirements.
+
+- [x] RED: request the two real metrics; inspect new accepted bundles and prove
+  totalUsers alias, seconds/session derivation, null reasons, invalid input rejection,
+  raw/native/derived separation, legacy strictness and complete pagination.
+- [x] GREEN: extend only these existing source paths; expose fixed metric provenance
+  in the existing read-only GA4 context. Remove obsolete users/time decision defaults;
+  keep missing legacy capability and independent property/window/coverage blockers.
+- [x] Regress: full deterministic GA4 gate, affected Blog v2 suites and accepted
+  loader, TypeScript, scoped lint and git diff --check. All fixtures synthetic.
+- [x] Review exact diff and update this execution record/contracts/handoff.
+
+Acceptance: new metrics acquired and normalized without activeUsers substitution;
+time is derived only from present numeric duration and positive integral sessions,
+otherwise null with a reason; invalid numeric input fails closed. Missing versus
+present-null versus real zero remain distinct. Legacy artifacts stay readable,
+all rows and `(not set)` behavior survive, and delivery remains NOT_EVALUATED.
+
+Metric-completion execution evidence (Node 24.19.0, synthetic fixtures only):
+
+- Initial RED: Content request lacked the two metrics; new compliance cases were
+  0/5 while all previous 18 cases passed. Implementation GREEN reached 23/23.
+- Additional RED: whitespace duration became zero (23/24), and source validation
+  accepted fewer rows than rowCount. The shared parser now treats whitespace-only
+  metric cells as null; source validation rejects incomplete normalized row counts.
+- Final GA4 compliance: 24/24, including 250,001 rows over two verified pages,
+  old/new placeholders, native versus derived fields, null reasons, exact schema
+  versions, missing values, malformed numeric data and unchanged raw/draft bytes.
+- Full `bash tests/integration/google-analytics-4/run-google-analytics-4-gate.sh`:
+  all connection/contract/desktop/parser/request/source-runtime/validation cases PASS.
+- Blog v2 runners: readiness 10/10, Ads/GSC field compliance 13/13, selection 7/7,
+  draft 8/8, KWP 14/14, İkas 13/13, Sitemap 12/12, SERP 14/14 PASS. The earlier
+  readiness total of 23 blockers is now 21 because the two users/time semantic
+  decisions are resolved; legacy missing-source blockers remain asserted.
+- Accepted-artifact loader PASS; `npx tsc --noEmit` PASS; worktree-local ESLint
+  (`--no-eslintrc --config .eslintrc.json`) on all six changed TS files PASS.
+- Independent read-only review: no actionable findings. Exact diff and
+  `git diff --check` reviewed at final verification.
+
+No source-family COMPLETE, live GA4, packaged-runtime or Blog delivery acceptance
+is inferred. Property-timezone window binding, legacy property handling and
+independent coverage rules remain open. No production Run/export, migration,
+historical evidence change, report access, commit or push.
+
 Authority: user's focused implementation request; approved GA4 source design and
 plan (2026-10-03), DATA_CONTRACTS.md, current Blog v2 evaluator and TEST_STRATEGY.md.
 Baseline abb8be3 with preserved uncommitted SERP work. No commit/push/live requests.

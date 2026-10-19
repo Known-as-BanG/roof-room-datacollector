@@ -11,6 +11,7 @@ import {
   type GscQueryRequest,
 } from './query-page-adapter';
 import type { ApiRequester } from '../google-api/api-helpers';
+import { acquireGscDateCoverage, isGsc28DayWindow, requireGscPropertySelection } from './gsc-date-coverage';
 import { mapGoogleApiCollectionError } from '../google-api/google-api-error';
 
 const requireDate = (value: unknown): string => {
@@ -61,7 +62,8 @@ export class GoogleSearchConsoleSource implements CollectingDataSourceModule {
 
   constructor(
     private readonly siteUrl: string | null,
-    private readonly requester: ApiRequester
+    private readonly requester: ApiRequester,
+    private readonly now: () => Date = () => new Date(),
   ) {}
 
   getCapabilities(): SourceCapabilities {
@@ -107,6 +109,18 @@ export class GoogleSearchConsoleSource implements CollectingDataSourceModule {
 
       if (
         reviewedSiteUrl === undefined
+        && typeof sourceContext.task_id === 'string'
+        && sourceContext.task_id.startsWith('gsc-')
+      ) {
+        throw new Error(
+          'An explicitly selected Search Console property is required for desktop Query × Page Jobs.',
+        );
+      }
+
+      if (reviewedSiteUrl !== undefined) requireGscPropertySelection(reviewedSiteUrl);
+
+      if (
+        reviewedSiteUrl === undefined
           ? false
           : reviewedSiteUrl === this.siteUrl
             ? false
@@ -121,6 +135,7 @@ export class GoogleSearchConsoleSource implements CollectingDataSourceModule {
         reviewedSiteUrl
         ?? this.siteUrl;
 
+      if (sourceContext.search_type !== undefined && sourceContext.search_type !== 'web') throw new Error('Query × Page supports only web search type.');
       countryFilter = requireOptionalCountryFilter(sourceContext.country_filter);
       start = requireDate(sourceContext.requested_date_start);
       end = requireDate(sourceContext.requested_date_end);
@@ -139,11 +154,14 @@ export class GoogleSearchConsoleSource implements CollectingDataSourceModule {
     };
     try {
       const result = await fetchGscQueryPage(request, this.requester);
+      const coverage = sourceContext.site_url !== undefined && isGsc28DayWindow(start, end)
+        ? await acquireGscDateCoverage(request, this.requester, this.now) : undefined;
       return {
         result_type: 'ARTIFACT_PRODUCED',
         preferred_filename: 'gsc-query-page.json',
         media_type: 'application/json',
-        bytes: new TextEncoder().encode(JSON.stringify(result.raw_pages))
+        bytes: new TextEncoder().encode(JSON.stringify(result.raw_pages)),
+        ...(coverage ? { acquisition_metadata: { gsc_date_coverage: coverage } } : {})
       };
     } catch (error) {
       return mapGoogleApiCollectionError(error, 'GSC_API_FAILED', 'Search Console request failed.');

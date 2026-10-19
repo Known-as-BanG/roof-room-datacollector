@@ -1,10 +1,15 @@
+import type { GscDateCoverageProvenance } from '../../shared/blog-writing-pack-v2-selection';
+import { parseGscDateCoverage } from '../sources/google-search-console/gsc-date-coverage';
 import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
+import { isDeepStrictEqual } from 'node:util';
 
 import type { ArtifactRecord } from '../../shared/artifact';
 import type { JobRecord, RunRecord } from '../../shared/run-job';
 import type { DataPackageInputDataset } from './data-package-exporter';
 import type { StorageManager } from '../storage/storage-manager';
+import { createAttemptDocumentFilename } from '../storage/storage-manager';
+import type { SerpApiAcquisitionProvenance } from '../../shared/serpapi';
 import { parseGoogleTrendsInterestOverTimeCsv } from '../sources/google-trends/google-trends-interest-over-time-parser';
 import { normalizeGscQueryRows, normalizeGscRows } from '../sources/google-search-console/query-page-adapter';
 import {
@@ -16,7 +21,7 @@ import { createKeywordPlannerJobContext } from '../sources/google-ads/keyword-pl
 import { parseKeywordPlannerManualCsv } from '../sources/google-ads/keyword-planner-csv-parser';
 import { parseIkasProductsXlsx } from '../sources/ikas/ikas-products-parser';
 import { parseBitkimarkSitemap } from '../sources/bitkimark/bitkimark-sitemap-parser';
-import { parseSerpApiResponse } from '../sources/serpapi/serpapi-parser';
+import { parseSerpApiResponse, parseSerpApiResponseAcquisition } from '../sources/serpapi/serpapi-parser';
 import { requireSerpApiJobContext } from '../sources/serpapi/serpapi-request';
 import { GOOGLE_ADS_SEARCH_REPORTING_SOURCE_ID } from '../../shared/google-ads-search-reporting';
 import { GOOGLE_ADS_CHANGE_HISTORY_SOURCE_ID } from '../../shared/google-ads-change-history';
@@ -127,15 +132,15 @@ export class ProductionDataPackageLoader {
   async verifyAcceptedJobArtifact(
     run_id: string,
     job_id: string,
-  ): Promise<{ artifact: ArtifactRecord; requested_context: unknown }> {
-    const { artifact, requested_context } = await this.readAcceptedJobArtifact(run_id, job_id);
-    return { artifact, requested_context };
+  ): Promise<{ artifact: ArtifactRecord; requested_context: unknown; serp_acquisition?: SerpApiAcquisitionProvenance; gsc_date_coverage?: GscDateCoverageProvenance }> {
+    const { artifact, requested_context, serp_acquisition, gsc_date_coverage } = await this.readAcceptedJobArtifact(run_id, job_id);
+    return { artifact, requested_context, ...(serp_acquisition ? { serp_acquisition } : {}), ...(gsc_date_coverage ? { gsc_date_coverage } : {}) };
   }
 
   async readAcceptedJobArtifact(
     run_id: string,
     job_id: string,
-  ): Promise<{ artifact: ArtifactRecord; requested_context: unknown; bytes: Uint8Array }> {
+  ): Promise<{ artifact: ArtifactRecord; requested_context: unknown; bytes: Uint8Array; serp_acquisition?: SerpApiAcquisitionProvenance; acquisition_metadata_bytes?: Uint8Array; gsc_date_coverage?: GscDateCoverageProvenance; gsc_date_coverage_evidence?: unknown }> {
     const run = this.repository.getRun(run_id);
     if (run === null) throw new Error(`Unknown Run: ${run_id}`);
     const job = this.repository.listJobs(run_id).find((candidate) => candidate.job_id === job_id);
@@ -147,7 +152,68 @@ export class ProductionDataPackageLoader {
     ) throw new Error(`Job ${job_id} is not eligible accepted evidence.`);
     const artifact = this.requireAcceptedArtifact(run, job);
     const bytes = await this.readVerifiedArtifact(artifact);
-    return { artifact, requested_context: safeContext(job.source_context), bytes };
+    const acquisition = job.source_id === 'serpapi'
+      ? await this.readSerpAcquisition(job, artifact) : undefined;
+    const gsc = job.source_id === 'google-search-console-query-page' ? await this.readGscDateCoverage(job, artifact) : undefined;
+    const { metadata_bytes, ...serp_acquisition } = acquisition ?? {};
+    return { artifact, requested_context: safeContext(job.source_context), bytes,
+      ...(acquisition ? { serp_acquisition: serp_acquisition as SerpApiAcquisitionProvenance, acquisition_metadata_bytes: metadata_bytes } : {}),
+      ...(gsc ? { gsc_date_coverage: gsc.provenance, gsc_date_coverage_evidence: gsc.evidence, acquisition_metadata_bytes: gsc.bytes } : {}) };
+  }
+
+  private async readGscDateCoverage(job: JobRecord, artifact: ArtifactRecord) {
+    const relativePath = `${job.source_id}/metadata/${createAttemptDocumentFilename(job.job_key, artifact.attempt_number, 'metadata')}`;
+    const absolutePath = this.storage.resolveRunRelativePath(job.run_id, relativePath);
+    let bytes: Uint8Array;
+    try {
+      if (!(await lstat(absolutePath)).isFile()) throw new Error('GSC date metadata is not a regular file.');
+      bytes = new Uint8Array(await readFile(absolutePath));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw error;
+    }
+    const metadata = asObject(decodeJson(bytes, 'GSC date metadata'), 'GSC date metadata');
+    if (!Object.hasOwn(metadata, 'acquisition_metadata')) return undefined;
+    const acquisition = asObject(metadata.acquisition_metadata, 'GSC acquisition metadata');
+    if (!Object.hasOwn(acquisition, 'gsc_date_coverage')) return undefined;
+    if (metadata.schema_version !== 2 || metadata.run_id !== job.run_id || metadata.job_id !== job.job_id
+      || metadata.source_id !== job.source_id || metadata.source_mode !== 'OFFICIAL_API'
+      || metadata.job_key !== job.job_key || metadata.attempt_number !== artifact.attempt_number
+      || typeof metadata.attempt_id !== 'string' || !metadata.attempt_id.trim()
+      || metadata.raw_artifact_id !== artifact.artifact_id || metadata.raw_relative_path !== artifact.relative_path
+      || !isDeepStrictEqual(metadata.source_context, job.source_context)) throw new Error('GSC date metadata does not match the accepted evidence.');
+    parseGscDateCoverage(acquisition.gsc_date_coverage);
+    return { evidence: acquisition.gsc_date_coverage, bytes, provenance: {
+      attempt_id: metadata.attempt_id, metadata_relative_path: relativePath,
+      metadata_sha256: createHash('sha256').update(bytes).digest('hex'), metadata_byte_size: bytes.byteLength,
+    } };
+  }
+
+  private async readSerpAcquisition(job: JobRecord, artifact: ArtifactRecord): Promise<(SerpApiAcquisitionProvenance & { metadata_bytes: Uint8Array }) | undefined> {
+    const relativePath = `serpapi/metadata/${createAttemptDocumentFilename(job.job_key, artifact.attempt_number, 'metadata')}`;
+    const absolutePath = this.storage.resolveRunRelativePath(job.run_id, relativePath);
+    let bytes: Uint8Array;
+    try {
+      if (!(await lstat(absolutePath)).isFile()) throw new Error('SERP acquisition metadata is not a regular file.');
+      bytes = new Uint8Array(await readFile(absolutePath));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw error;
+    }
+    const metadata = asObject(decodeJson(bytes, 'SERP acquisition metadata'), 'SERP acquisition metadata');
+    // Legacy metadata may exist without any collector receipt observation.
+    if (!Object.hasOwn(metadata, 'acquisition_metadata')) return undefined;
+    if (metadata.schema_version !== 2 || metadata.run_id !== job.run_id || metadata.job_id !== job.job_id
+      || metadata.source_id !== job.source_id || metadata.source_mode !== 'THIRD_PARTY_API'
+      || metadata.job_key !== job.job_key || metadata.attempt_number !== artifact.attempt_number
+      || typeof metadata.attempt_id !== 'string' || metadata.attempt_id.trim().length === 0
+      || metadata.raw_artifact_id !== artifact.artifact_id || metadata.raw_relative_path !== artifact.relative_path
+      || !isDeepStrictEqual(metadata.source_context, job.source_context)) {
+      throw new Error('SERP acquisition metadata does not match the accepted evidence.');
+    }
+    return { ...parseSerpApiResponseAcquisition(metadata.acquisition_metadata),
+      attempt_id: metadata.attempt_id, metadata_relative_path: relativePath,
+      metadata_sha256: createHash('sha256').update(bytes).digest('hex'), metadata_byte_size: bytes.byteLength, metadata_bytes: bytes };
   }
 
   private async loadEligibleJobDataset(

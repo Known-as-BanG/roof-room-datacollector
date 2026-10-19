@@ -38,11 +38,11 @@ test('explicit GSC 28-day endpoints reject a 30-day aggregate without date recon
   assert.ok((await f.evaluate(profile)).blockers.some((item) => item.code === 'DECISION_REQUIRED' && item.requirement_id === 'gsc_requested_dates'));
 });
 
-test('current real requirements keep GA4 meanings open and missing Sitemap capability explicit', async () => {
+test('current real requirements keep legacy GA4 metric gaps and missing Sitemap capability explicit', async () => {
   const f = fixture(); await f.persist(families.map(([source, type], i) => f.add(`family_${i}`, source, type)));
   const result = await f.evaluate(BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS);
   assert.equal(result.coverage_status, 'PARTIAL');
-  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'users' && b.code === 'DECISION_REQUIRED'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'users' && b.code === 'SOURCE_CHANGE_REQUIRED'));
   assert.ok(result.blockers.some((b) => b.dataset_type === 'SITEMAP_URLS' && b.requirement_id === 'title' && b.code === 'SOURCE_CHANGE_REQUIRED'));
   assert.ok(result.blockers.some((b) => b.dataset_type === 'SEARCH_TERMS' && b.requirement_id === 'reporting_window' && b.code === 'DECISION_REQUIRED'));
 });
@@ -96,11 +96,13 @@ test('a synthetic profile cannot approve the seven implemented families remainin
   assert.equal(result.coverage_status, 'PARTIAL');
   assert.equal(result.coverage_scope, 'EXPLICIT_REQUIREMENTS_ONLY');
   assert.equal(result.delivery_readiness, 'NOT_EVALUATED');
-  assert.equal(result.blockers.length, 23);
+  assert.equal(result.blockers.length, 22);
+  assert.ok(result.blockers.some((b) => b.mandatory && b.requirement_id === 'gsc_date_coverage'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'ga4_completed_days' && b.code === 'WINDOW_MISMATCH'));
   assert.equal(result.blockers.filter((b) => b.code === 'DECISION_REQUIRED' && b.requirement_id === 'field_compliance').length, 0);
   assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'users' && b.code === 'SOURCE_CHANGE_REQUIRED'));
-  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'average_engagement_time' && b.code === 'DECISION_REQUIRED'));
-  assert.ok(result.blockers.some((b) => b.dataset_type === 'GOOGLE_SERP' && b.requirement_id === 'capture_date'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'average_engagement_time' && b.code === 'SOURCE_CHANGE_REQUIRED'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GOOGLE_SERP' && b.code === 'FIELD_OBSERVATION_REQUIRED' && b.requirement_id === 'serp_acquisition'));
   assert.ok(result.blockers.some((b) => b.dataset_type === 'GOOGLE_SERP' && b.requirement_id === 'query_coverage'));
   assert.ok(result.blockers.some((b) => b.code === 'SOURCE_CHANGE_REQUIRED' && b.requirement_id === 'currency_context'));
   assert.ok(result.blockers.some((b) => b.requirement_id === 'keyword_coverage'));

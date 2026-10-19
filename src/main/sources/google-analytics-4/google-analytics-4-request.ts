@@ -24,6 +24,8 @@ const CONTENT_PERFORMANCE_METRICS = [
   { name: 'ecommercePurchases' },
   { name: 'transactions' },
   { name: 'purchaseRevenue' },
+  { name: 'totalUsers' },
+  { name: 'userEngagementDuration' },
 ] as const;
 
 const PAID_FUNNEL_DIMENSIONS = [
@@ -180,7 +182,7 @@ export const collectGoogleAnalytics4Raw = async (
   }
 
   return {
-    bundle_schema_version: 1,
+    bundle_schema_version: input.dataset_type === 'GA4_CONTENT_PERFORMANCE' ? 2 : 1,
     dataset_type: input.dataset_type,
     request: {
       property_id: input.property_id,

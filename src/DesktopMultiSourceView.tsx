@@ -1170,6 +1170,9 @@ export function DesktopMultiSourceView() {
       null,
     );
 
+  const [adsCustomerId, setAdsCustomerId] = useState('');
+  const [gscSiteUrl, setGscSiteUrl] = useState('');
+
   const [
     taskPackageReview,
     setTaskPackageReview,
@@ -1667,6 +1670,8 @@ export function DesktopMultiSourceView() {
     }
 
     setWorkspaceConnectionDrafts({});
+    setAdsCustomerId('');
+    setGscSiteUrl('');
 
     window.roofroom
       .getDesktopWorkspaceConnections(
@@ -2254,15 +2259,22 @@ export function DesktopMultiSourceView() {
   const buildCurrentTaskSourceConfiguration = (
     task: CollectionDesktopTaskDefinition,
   ): JsonObject | null => {
+    if (task.source_id === 'google-ads-search-terms') {
+      if (!/^\d+$/u.test(adsCustomerId)
+        || workspaceConnections.find((connection) => connection.source_id === task.source_id)?.customer_id !== adsCustomerId) return null;
+      return { included: true, task_id: task.task_id, date_policy: task.date_policy ?? null, customer_id: adsCustomerId };
+    }
+    if (task.source_id === 'google-search-console-query-page') {
+      if (!gscSiteUrl || workspaceConnections.find((connection) => connection.source_id === task.source_id)?.site_url !== gscSiteUrl) return null;
+      return { included: true, task_id: task.task_id, date_policy: task.date_policy ?? null, site_url: gscSiteUrl };
+    }
     if (task.task_id === 'gsc-query-current-previous-28-days') {
       return { included: true, task_id: task.task_id };
     }
 
     if (
       (
-        task.source_id === 'google-search-console-query-page'
-        || task.source_id === 'google-trends'
-        || task.source_id === 'google-ads-search-terms'
+        task.source_id === 'google-trends'
       )
       && task.date_policy !== undefined
     ) {
@@ -4429,15 +4441,15 @@ export function DesktopMultiSourceView() {
               || (
                 (
                   selectedTask.source_id
-                    === 'google-search-console-query-page'
-                  || selectedTask.source_id
                     === 'google-trends'
-                  || selectedTask.source_id
-                    === 'google-ads-search-terms'
                 )
                 && selectedTask.date_policy
                   !== undefined
               )
+              || (selectedTask.source_id === 'google-search-console-query-page'
+                && buildCurrentTaskSourceConfiguration(selectedTask) !== null)
+              || (selectedTask.source_id === 'google-ads-search-terms'
+                && buildCurrentTaskSourceConfiguration(selectedTask) !== null)
               || (
                 selectedTask.source_id
                   === 'google-analytics-4'
@@ -4604,15 +4616,35 @@ export function DesktopMultiSourceView() {
 
                     {selectedTask.source_id === 'google-search-console-query-page' && (
                       <>
-                        <p>Property: managed securely in Workspace</p>
+                        <label>
+                          GSC Query × Page property
+                          <select aria-label="GSC Query × Page property" value={gscSiteUrl}
+                            onChange={(event) => { setGscSiteUrl(event.target.value); setQuickRunReview(null); }}>
+                            <option value="">Select a property</option>
+                            {workspaceConnections.filter((connection) => connection.source_id === 'google-search-console-query-page' && connection.site_url)
+                              .map((connection) => <option key={connection.source_id} value={connection.site_url ?? ''}>{connection.site_url}</option>)}
+                          </select>
+                        </label>
                         <p>Date scope: {selectedTask.date_policy?.replaceAll('_', ' ')}</p>
                       </>
                     )}
 
-                    {selectedTask.source_id === 'google-ads-search-terms' && (
+                    {selectedTask.source_id === 'google-search-console-query-page' && (
+                      <p>Selected property: {gscSiteUrl || 'Unselected'}</p>
+                    )}
+                {selectedTask.source_id === 'google-ads-search-terms' && (
                       <>
                         <p>Scope: SEARCH campaigns · search_term_view</p>
                         <p>Date policy: 17-day reporting lag through yesterday</p>
+                        <label>
+                          Search Terms customer account
+                          <select aria-label="Search Terms customer account" value={adsCustomerId}
+                            onChange={(event) => { setAdsCustomerId(event.target.value); setQuickRunReview(null); }}>
+                            <option value="">Select an account</option>
+                            {workspaceConnections.filter((connection) => connection.source_id === 'google-ads-search-terms' && connection.customer_id)
+                              .map((connection) => <option key={connection.source_id} value={connection.customer_id ?? ''}>{connection.customer_id}</option>)}
+                          </select>
+                        </label>
                       </>
                     )}
 
@@ -5295,6 +5327,10 @@ export function DesktopMultiSourceView() {
                     }
                   </section>
                 </div>
+
+                {selectedTask.source_id === 'google-ads-search-terms' && (
+                  <p>Selected account: {String((((quickRunReview.review.reviewed_draft?.resolved_configuration.sources as JsonObject | undefined)?.['google-ads-search-terms']) as JsonObject | undefined)?.customer_id ?? 'Unavailable')}</p>
+                )}
 
                 {selectedTask.task_id === 'google-ads-conversion-date-performance' && (
                   <section className="rr-panel rr-detail-panel">

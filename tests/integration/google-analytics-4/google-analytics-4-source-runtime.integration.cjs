@@ -157,7 +157,7 @@ const responseFor = ({
     );
 
     assert.deepEqual(contentArtifact, {
-      bundle_schema_version: 1,
+      bundle_schema_version: 2,
       dataset_type: 'GA4_CONTENT_PERFORMANCE',
       request: {
         property_id: '123456789',

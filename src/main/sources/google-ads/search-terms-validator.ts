@@ -9,7 +9,9 @@ import {
 } from '../../../shared/google-api';
 import {
   normalizeSearchTerms,
+  inspectSearchTermsAccountEvidence,
 } from './search-terms-adapter';
+import { requireSearchTermsCustomerId } from './search-terms-request';
 
 const failure = (
   message: string,
@@ -55,6 +57,13 @@ implements CollectionValidator {
         ) as unknown;
 
       const rows = normalizeSearchTerms(body);
+      const selectedCustomer = context.job.source_context?.customer_id;
+      if (selectedCustomer !== undefined) {
+        requireSearchTermsCustomerId(selectedCustomer);
+        if (rows.length > 0 && inspectSearchTermsAccountEvidence(body, selectedCustomer).issues.length > 0) {
+          return failure('Observed Ads account identity/timezone does not establish the explicitly selected Job account.');
+        }
+      }
 
       return {
         validation_status:

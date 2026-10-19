@@ -343,6 +343,79 @@ GSC country scope provenance: Newly reviewed `google-search-console-query` and `
 
 Preserve clicks, impressions, CTR, position, dimensions, property/search-type/date context, raw response pages, and provider limitations.
 
+#### Query × Page finality evidence boundary
+
+Google documents inclusive Pacific-time request dates and finalized returned data
+for `dataState=final` or omission. `first_incomplete_date` is documented for
+`dataState=all` with date grouping when the range contains incomplete points;
+dates without data are omitted. See the [Search Analytics query reference](https://developers.google.com/webmaster-tools/v1/searchanalytics/query).
+Query/page grouping can drop data; see [Google's data limitations](https://developers.google.com/webmaster-tools/v1/how-tos/all-your-data).
+
+These guarantees do not independently establish the latest eligible 28-day
+interval or complete daily coverage. Absence of `first_incomplete_date` is not
+coverage proof. Query × Page requests keep query/page dimensions, use the supported
+`web` search type explicitly, and preserve full raw response pages. They continue
+to omit `dataState`; that default guarantee is distinct from an explicitly captured
+request mode. Historical missing property/type/date evidence is never backfilled.
+
+**Approved conservative date coverage:** a separate date-grouped request must use
+`dataState=final` for the same selected property, search type and exact 28-day
+window. Every one of the 28 consecutive calendar dates must actually appear in
+provider-returned date keys. Missing dates remain unresolved coverage blockers,
+including dates with possible zero traffic; requested endpoints never become
+observed dates. This establishes observed date presence, not complete website
+reporting or complete Query × Page rows. Query × Page observations remain separate.
+
+New source collections with an explicit frozen `site_url` and exactly 28 requested
+dates acquire a companion final/date response in the same Attempt. The supported
+search type is `web`; unsupported explicit types fail before acquisition. The
+companion keeps the same optional country scope, requested property/type/endpoints/
+state/grouping, unmodified response body and collector-observed UTC response receipt.
+The existing native Attempt metadata stores it as
+`acquisition_metadata.gsc_date_coverage`, separate from the Query × Page raw array.
+Its envelope binds Run, Job, Attempt, frozen context and raw artifact identity.
+
+Accepted loading checks this envelope and response shape. New drafts freeze the
+metadata's Attempt/path/SHA-256/byte-size reference in optional `gsc_date_coverage`;
+readiness and publication reverify it without attaching later evidence to older
+drafts. Supporting metadata is copied byte-exactly through the existing publication
+metadata mechanism if publication otherwise becomes eligible. There is no join to
+another Run or automatic evidence selection. Legacy absence stays absence.
+
+Source-owned inspection reports actual observed/missing dates, property/type/window/
+country mismatch, or missing evidence; invalid state/grouping/date/receipt or
+contradictory incomplete metadata is rejected. Native Query × Page validity remains
+distinct from Blog coverage: sparse date responses can be valid provider evidence
+and still block Blog readiness. A receipt after the evaluation instant also blocks.
+Unbound or non-28-day Jobs retain their acquisition behavior without new date proof.
+Supported desktop Query × Page Quick Runs require an explicit property selection
+from the safe Workspace connection view. The selector starts blank, Review is
+unavailable until selection, and a changed selection invalidates Review. Review
+and Start reject missing, invalid, changed, or conflicting property identities;
+the exact selected `site_url` is frozen in each Query × Page Job and is used by
+both the Query × Page request and its companion date request. URL-prefix paths
+and `sc-domain:` identities are not rewritten. Desktop Query × Page Jobs cannot
+fall back to the active connection when their frozen property is absent. Taskless
+legacy Jobs retain their prior configured-property compatibility, without gaining
+a fabricated property observation or Blog coverage proof. Query-only Job behavior
+is unchanged.
+
+Blog v2's mandatory `gsc_finality` blocker and
+`publication_time_context.finality: NOT_ESTABLISHED` describe the unresolved
+**whole reporting-window eligibility**, not unknown finality of returned values.
+Exact approved 28-day endpoints alone cannot clear this blocker. Publication
+reevaluates it at the actual package UTC timestamp without replacing selected
+evidence. Elapsed time cannot supply missing evidence; finalized observations
+remain finalized, while an older cutoff may cease to establish the latest interval.
+
+The remaining evidence-policy decision is how the selected interval is established
+as the **latest eligible** one at actual package creation. Historical complete
+date evidence does not establish that claim. No finalization lag, assumed
+availability date, cutoff lifetime or probe freshness threshold is approved.
+The Query × Page row-loss limitation remains explicit; date evidence does not
+resolve it. Missing support remains blocked; 30-day aggregates cannot be reduced
+into unsupported 28-day observations.
+
 ### Google Ads SEARCH reporting
 
 Approved SEARCH-only datasets:
@@ -377,6 +450,54 @@ Schema v3 retains all standard v2 conversion fields and adds four distinct provi
 The conversion-date desktop task fixes the three v3 datasets and uses the existing Google Ads reporting connection. Review resolves the connected customer ID and exact dates into its Job plans without changing reusable configuration. Start rejects a changed account. A selection that attempts colliding v2/v3 Jobs under the same `source_id + job_key` is blocked before Run creation.
 
 Legacy `google-ads-search-terms` remains compatible.
+
+The dedicated `google-ads-search-terms` query additionally selects native
+`customer.id` and `customer.time_zone` with its existing SEARCH fields and exact
+absolute date endpoints. The shared `google-ads-search-reporting` Search Terms
+descriptor retains its existing query. This adds no account lookup, calendar
+default or reconstructed provider observation. The source retains returned
+`customer.id` / `customer.timeZone` in its raw SearchStream artifact; existing
+storage and Artifact SHA-256/size, Run/Job/Attempt/Validation identity and frozen
+Blog membership bind that observation. No additional acquisition sidecar is needed.
+
+When a Job explicitly freezes `customer_id`, collection already requires it to
+match the active Workspace connection. Native validation of nonempty account-bound
+responses also requires matching provider account identity and valid, consistent
+timezone evidence through the source-owned account inspector. Empty results retain
+NO_DATA without inventing account/timezone observations. Legacy Jobs with no
+frozen selection retain their existing validation/read behavior and are not
+retroactively bound. Native validation is not a Blog reporting-window verdict.
+At publication, the Ads inspector requires observed account identity to agree
+with that frozen selection and a valid, consistent provider timezone. Missing
+metadata, missing explicit selection and conflicting observations block. Legacy
+Jobs/artifacts remain readable without assigning account/timezone retroactively.
+Only native SearchStream rows establish this metadata; arbitrary customer fields
+attached to legacy flat rows do not create supported account observations.
+Desktop Search Terms task detail provides an initially blank account selector using
+the existing safe Workspace account view. The user explicitly selects the customer;
+the connected account only supplies an available choice and never fills request
+identity. Quick Run, preset/generic planning and Start require explicit numeric
+`customer_id` in source configuration and freeze it in every new Search Terms Job.
+Provided per-Job accounts must agree before managed Jobs are reconstructed. Review
+and Start verify the supplied account against the Workspace connection, including
+unchanged reusable/resolved account scope. Missing/invalid/conflicting selections
+block new Job creation; no account is copied from a prior Job or provider response.
+Stored presets with explicit selection retain it; older unbound configurations
+must receive an explicit selection. Source execution uses the frozen Job customer
+and retains its existing changed-connection guard. Historical Jobs are unchanged.
+Existing 7/14/17/30-day desktop date policies are unchanged; only exact last-30-day
+account-calendar evidence can satisfy the independent Blog publication check.
+
+`publication_time_context` keeps requested account/endpoints marked
+`FROZEN_JOB_CONTEXT`, provider customer IDs, original timezone names and actual
+performance dates separately. Its canonical `time_zone` and expected `start_date`
+/ `end_date` derive from the explicit PACKAGE_CREATED_AT UTC reference in that
+account timezone: yesterday through thirty calendar dates before today inclusive.
+Calendar-date arithmetic crosses DST independently of elapsed day length. Exact
+requested endpoint equality and observed-date bounds are checked independently.
+Only actual dated rows appear in `observed_performance_dates`; sparse/missing
+dates are never expanded to zero-activity observations or claimed complete daily
+coverage. Raw source bytes and normalized performance mappings are unchanged.
 
 Performance Max is outside this contract.
 
@@ -574,6 +695,216 @@ Keyword Planner API/manual provenance remains distinct.
 
 Blog packaging is local-only and creates no provider call, retry, Attempt, Run/Job transition, or schema migration.
 
+### `BLOG_WRITING_PACK v2` approved delivery requirements (2026-10-17)
+
+Authority: the user's approved-contract consolidation request. These requirements
+define intended Blog v2 delivery semantics; approval is not evidence of source
+support, implementation, deterministic verification, or real-provider acceptance.
+They supplement the existing approved multi-Run selection/draft contract below.
+The repository records that design through the draft/readiness contracts and
+completed slice plans; no standalone Blog v2 design file is present at this checkpoint.
+Blog v1, Ads Growth and other package/source contracts remain unchanged.
+
+#### Approved source requirements
+
+1. **Google Ads Search Terms:** require the last **30 completed calendar days**
+   in the Ads account timezone. Preserve exact requested start/end dates and actual
+   observed performance dates separately. Missing days never imply activity or
+   synthetic zero rows.
+2. **Google Search Console Query × Page:** require the last **28 consecutive days
+   whose finality is supported by actual GSC evidence**. Do not invent a fixed
+   finalization lag. Preserve exact request dates and supporting finality evidence.
+   Existing 30-day aggregate evidence cannot be reconstructed into 28-day evidence.
+   The source-owned conservative date-coverage rule above requires separately
+   preserved final/date observations for all 28 dates; latest-interval eligibility
+   at publication remains independently blocked.
+3. **Keyword Planner:** require actual monthly observations for the last
+   **12 completed calendar months**. Preserve additional current-month evidence
+   only when Google actually provides it, and
+   label any available partial-month observation separately. Current-month absence
+   does not invalidate supported evidence for the 12 completed months. Never invent
+   monthly history from `average_monthly_searches`. Preserve requested versus
+   returned keywords, native competition semantics (category versus index), actual
+   currency context and bid units (API micros versus manual currency units).
+4. **İkas Products:** keep product and variant identity separate; `variant_id`
+   never substitutes for `product_id`. Preserve all provider-observed categories.
+   A singular `category` is allowed only when uniquely observed or explicitly
+   designated primary by the provider. Blog `price` means **verified current sale
+   price**. Preserve list price, sale price and variant-level prices separately;
+   never choose an arbitrary variant price. Preserve actual provider currency
+   context. `availability`, `stock_status` and `product_status` have separate
+   meanings; do not derive one from another without an approved provider-supported
+   rule. These definitions do not establish such a rule or prove import support.
+5. **Sitemap URLs:** `url` comes from observed Sitemap `loc`. `page_type` requires
+   observed evidence or a separately approved deterministic mapping; URL patterns
+   alone do not approve classifications. `title` requires an observed HTML page
+   title. `status` requires that individual page's observed HTTP response status;
+   sitemap-document fetch status is not page status. Additional controlled page
+   evidence acquisition is approved **in principle only**. Its implementation and
+   live execution are outside this task and require a separate scope.
+6. **Google SERP snapshot:** `query` is the request dimension verified by the
+   provider. `capture_date` is the date derived from actual RoofRoom response
+   acquisition time; preserve its original UTC timestamp and keep distinct provider
+   timestamps separate. A requested snapshot date does not establish capture time.
+   `position` is the provider's **organic position**, never absolute mixed-result
+   SERP rank. Preserve provider-observed URLs and titles. `domain` may be derived
+   deterministically from an observed URL with explicit derived provenance. Use
+   the existing **Google / TR / tr / desktop / first-ten organic results** profile;
+   PAA evidence remains separate. Required queries must be explicitly selected,
+   never automatically generated. Accepted SERP evidence must be **no more than
+   7 days old at package creation**, checked against actual acquisition time.
+7. **GA4 Content Performance:** require the last **28 completed calendar days**
+   in the explicitly selected GA4 property's timezone. Blog `users` means actual
+   GA4 `totalUsers`; `activeUsers` cannot substitute. `average_engagement_time`
+   means **engagement seconds per session**, derived as
+   `userEngagementDuration / sessions` only when both provider metrics are present
+   and `sessions > 0`. Otherwise use null with appropriate evidence and compliance
+   semantics; null must not disguise missing provider capability or observations.
+   This expression is derived, never a raw GA4 metric. Preserve `keyEvents`,
+   `engagedSessions`, `engagementRate` and `sessions` in their native meanings.
+   Preserve **all actually returned landing-page rows across complete verified
+   pagination**, with no arbitrary top-N limit. Do not invent missing pages or
+   zero traffic. Preserve `(not set)` as provider-native evidence while excluding
+   it from identified landing pages. Complete returned-row coverage does not prove
+   coverage of pages the provider did not return.
+
+Exact dates, timezones, query selections and field observations must remain
+traceable to real selected evidence. Calendar policies do not authorize filling
+historical request context, changing immutable membership or retargeting evidence.
+The SERP acquisition-date basis is approved; no additional display timezone or
+provider timestamp substitution is implied.
+
+#### Resolution of earlier contracts and slice-era decisions
+
+These decisions take precedence for Blog v2 over conflicting earlier guidance.
+The following identifies the exact conflicts; completed plans remain historical
+implementation/verification records rather than being rewritten as new acceptance.
+
+| Earlier authority / assumption | Approved resolution and remaining implementation boundary |
+| --- | --- |
+| Ads/GSC Slice 3B.2A and readiness: Ads duration unspecified; GSC only exact supplied 28-day endpoints checked | Ads is 30 completed account-timezone days; GSC is 28 consecutive evidence-final days. Existing endpoint equality is insufficient to prove either new policy. |
+| Keyword Planner Slice 3B.2B.1: Blog historical duration unapproved and not inherited from acquisition/Ads Growth | Blog independently approves 12 completed months, with separately labeled provider-returned current-month evidence. Actual monthly coverage, keyword completeness and currency still require evidence. |
+| İkas Slice 3B.2B.2: category and Blog price meaning unresolved | All observed categories must survive; singular category has the uniqueness/provider-primary rule; Blog price is verified current sale price. Existing native columns/variant rows do not prove those meanings. No stock/lifecycle mapping is approved. |
+| Sitemap Slice 3B.2B.3: page evidence/rules require follow-up approval | Page evidence acquisition is now approved in principle; page-type mapping, controlled implementation and live execution remain unresolved or separately scoped. Sitemap fetch status still cannot satisfy page status. |
+| SERP Slice 3B.2B.4: capture_date, position_semantics, search_context and freshness always DECISION_REQUIRED | Acquisition-based capture, organic position, existing search profile and maximum 7-day age are approved. Follow-ups implement receipt provenance, derived capture_date and draft-time age checks. Other scope blockers remain; actual package-time enforcement is still absent. |
+| GA4 source design `2026-10-03-google-analytics-4-source-design.md` §6: approximately 90-day Blog recommendation and locked activeUsers-based metric list | Blog v2 requires 28 completed property-timezone days and actual totalUsers plus the approved duration/session derivation. The older source metric list describes legacy Content v1; metric completion extends Content v2 while preserving Paid Funnel's metric schema. |
+| GA4 Slice 3B.2B.5: users/time/window unapproved; no duration calculation or null placeholder emitted | Those delivery meanings are approved. Follow-ups implement Content v2 metrics and property-timezone calendar checks at immutable draft creation. Legacy missing provenance/metric gaps remain explicit blockers. Historical evidence is not rewritten. |
+| GA4 Slice 3B.2B.5: content_coverage decision includes page/property/population scope | Preserve all returned rows and verified pagination; no top-N or invented pages. Legacy missing property context, cross-Job population compatibility and warning/placeholder compliance remain unresolved. |
+
+#### Remaining decisions, source gaps and next implementation boundary
+
+Genuine open product decisions include the required Keyword Planner keyword set
+and requested-keyword completeness policy (plus manual structured request scope),
+the exact explicitly selected SERP queries, supported İkas availability/stock/
+product-status rules and product freshness, Sitemap inventory scope/freshness and
+page-type evidence/mapping rules, controlled page acquisition design, and compatible
+multi-Job / LOW_DATA / NO_DATA coverage. Legacy GA4 missing frozen property or
+provider timezone evidence remains a per-artifact blocker, with no retroactive assignment.
+The all-returned-GA4-rows requirement does not resolve those independent policies.
+Source feasibility, missing fields and provider acceptance are evidence gaps,
+not reasons to reopen the approved field meanings or manufacture observations.
+
+| Family | Current limitation / required separately scoped work |
+| --- | --- |
+| Ads | Draft inspection compares supplied endpoints. Publication independently checks the completed-30-day window using provider-observed timezone bound to the selected account, preserving requested/observed dates. Missing native account/timezone evidence blocks; no acquisition extension or source-complete claim follows. |
+| GSC | Exact 28-day endpoints and finalized returned values do not establish whole-window eligibility. The source-owned finality evidence boundary above defines the remaining blocker; incompatible aggregates cannot be reconstructed. |
+| Keyword Planner | Publication checks actual monthly observations for the twelve requested months, but publication calendar timezone and keyword completeness remain unresolved; API account currency is not captured. Manual CSV lacks structured reviewed request scope. Additional observed months stay separate and are never required when absent. |
+| İkas | Current parser retains separate product/variant identity and native category/price fields but cannot establish approved singular category or product sale price. Currency is unmapped; availability is legacy variant-derived and can replace a raw availability column; product stock/lifecycle status is unsupported. Extend only from actual supported provider/import evidence. |
+| Sitemap | Existing source acquires XML, not individual page title/type/HTTP status. Controlled page evidence implementation and live execution are not authorized here. |
+| SERP | Collector response receipt is preserved and revalidated; UTC capture_date is explicitly derived. Draft and publication-time inclusive seven-day checks are deterministic. Legacy receipt absence blocks without backfill. Query/coverage scope and real-provider acceptance remain open. |
+| GA4 | Content v2 metrics and conditional derived/null compliance are implemented, with active_users separate. Property binding, provider-timezone consistency and last-28-day checks use draft or independent publication creation time as applicable. Legacy missing provenance/metrics remains blocked; independent coverage and real-provider acceptance remain unresolved. |
+
+`BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS` and source inspectors still represent
+the source-policy checkpoint with the GA4 metric/property-window, SERP acquisition/freshness and JSON-publication follow-ups
+documented below. Some DECISION_REQUIRED labels still describe
+**approved but not yet implemented** requirements. Do not clear lists alone to
+claim readiness, mark blocked families COMPLETE, fabricate provider observations,
+or promote a draft. Delivery remains NOT_EVALUATED. Provider feasibility, missing
+currency acquisition, real-provider acceptance, full real-evaluator publication
+success and delivery verification all remain unresolved.
+
+The focused GA4 metric and property/window follow-ups are implemented and
+deterministically verified below. Missing legacy provenance is not repaired.
+Independent coverage and real-provider acceptance remain later boundaries;
+JSON-only publication mechanics are defined below. Deterministic checks do not
+authorize live execution.
+
+### `BLOG_WRITING_PACK v2` JSON-only publication (approved 2026-10-18)
+
+Authority: the user's explicit approval of the JSON-only Publication Contract,
+including independent reevaluation of every applicable time-dependent requirement
+at actual UTC package creation. This is an intermediate publication stage, not
+complete Blog v2 delivery. Existing v1 formats/readers/publication are unchanged.
+
+A successful immutable package contains exactly `payload.json`, `manifest.json`
+and `evidence/` below its unique output package ID in the existing Blog package
+root. The output ID must differ from the frozen draft ID and must not already
+exist. Both JSON documents contain `schema_version: "2.0"`,
+`recipe_id: BLOG_WRITING_PACK`, `recipe_version: 2`, package/workspace/draft IDs.
+No workbook is required. Later Excel support cannot redefine these JSON bytes or
+silently change membership; published JSON is immutable.
+
+`payload.json.members` preserves explicit frozen draft order, one entry per
+selected Source/Dataset/Run/Job/Attempt/Artifact/Validation identity. Each member
+contains its complete `evidence` snapshot, a `raw` file reference, optional
+`acquisition_metadata` file reference and separate `normalized` / `derived`
+representations. Normalized rows carry their implementation identifier. Derived
+rows carry `row_index` and `values`; transformations carry field, expression,
+optional unit and explicit approval flag. Source-owned inspectors define those
+transformations. Unknown/unapproved mappings cannot be published. No Jobs/rows
+are merged, aggregated, reconstructed, deduplicated or silently substituted.
+
+Raw copies use `evidence/<member-index>/raw.bin` with a minimum six-digit zero-padded index; their extension does
+not transform provider bytes. Required native acquisition metadata is copied
+byte-exactly to `evidence/<index>/acquisition-metadata.json`. Every file reference
+contains package-relative path, SHA-256 and byte size. Original Artifact and
+acquisition-metadata integrity references stay in frozen membership independently
+of the new copy paths. Raw, normalized and derived evidence remain distinguishable.
+
+`manifest.json` records identity, `created_at`, application version, complete
+`selected_evidence`, file references for payload and evidence, and a `readiness`
+snapshot: `rule_version: blog-v2-publication-1`, evaluation timestamp, SATISFIED
+verdict and complete evaluation including requirements/blockers/source contexts.
+The manifest never hashes itself. Publication status is JSON_ONLY_PUBLISHED and
+delivery status remains INCOMPLETE. These statuses establish neither workbook,
+Electron, live-provider nor full delivery acceptance.
+
+`publishBlogWritingPackV2` reads the exact draft, stages verified raw and required
+metadata copies, samples its collector clock for creation, and calls the real
+readiness evaluator in PUBLICATION phase with that explicit UTC instant. It
+accepts no cached verdict or replacement selections. Every mandatory dataset
+must be SATISFIED with no mandatory blockers; identity/integrity failures in any
+selected member, including optional Trends, also prevent publication. Otherwise
+staging is removed and
+no completed-package record is created. Source acceptance, Attempts, artifacts
+and draft bytes are never changed. Generic JSON store tests may exercise storage
+using an explicitly synthetic complete assessment; that is not a real source
+policy acceptance result or a production readiness bypass.
+
+Publication-time checks use the same creation timestamp independently of draft
+time: SERP uses the inclusive full-UTC seven-day rule; GA4 recalculates the last
+28 completed property-calendar days from observed property timezone; Ads checks
+the last 30 completed days using provider-observed account timezone and preserves
+requested/observed dates separately. Missing/conflicting timezone evidence blocks.
+The dedicated Ads query captures native customer ID/timezone as defined in the
+Ads source contract above. Legacy contexts without an explicitly frozen customer
+ID remain blocked; captured observations never backfill the requested selection.
+Planner requires actual monthly observations, preserving missing/null/zero and
+additional observed months; its calendar timezone relative to a publication
+instant is not established by the current approved evidence/contract and remains
+an explicit blocker. Host timezone is never substituted. GSC still requires exact
+approved 28-day endpoints plus evidence of whole-window eligibility under the
+source-owned finality boundary above; finalized returned values alone do not clear
+the publication blocker.
+All earlier field, coverage, identity, integrity and unresolved-rule blockers remain.
+
+The v2 store uses private staging, exclusive writes, a publication reservation,
+complete JSON/file-set/hash validation and final rename. Readback rejects changed
+files, unsafe references, symlinks, unbound identities and invalid readiness.
+Failed preparation/validation leaves no completed package; existing exports are
+never overwritten. Current source/coverage gaps prevent a full real-evaluator
+success path; resolving those gaps is separate from JSON materialization tests.
+
 ### `BLOG_WRITING_PACK v2` draft membership (Slice 2)
 
 This additive draft format records explicitly selected accepted evidence from
@@ -601,9 +932,14 @@ selected_evidence: [Slice 1 resolved evidence, in explicit selection order]
 
 Each membership entry preserves `workspace_id`, `source_id`, `dataset_type`,
 `run_id`, `job_id`, the actual `attempt_id` and `validation_id`, validation status,
-`artifact_id`, SHA-256, byte size, sanitized requested context, acquisition time,
+`artifact_id`, SHA-256, byte size, sanitized requested context, legacy `acquired_at`,
 and the resolver's observed context (currently null). `dataset_type` is the
 existing dataset identity field; no persisted `dataset_id` is invented.
+New SERP memberships additionally freeze optional `serp_acquisition`: the collector
+response-receipt UTC instant and origin, actual Attempt ID, and existing metadata
+file relative path/SHA-256/byte size. `acquired_at` retains its artifact.created_at
+meaning for compatibility; it is not the response-receipt observation. Old drafts
+without `serp_acquisition` remain readable and are never backfilled on reload.
 
 Membership is a snapshot: reload validates the stored format without resolving
 against current Runs. Newer Runs cannot alter it. Distinct same-family Jobs remain
@@ -620,7 +956,13 @@ change is involved.
 
 ### `BLOG_WRITING_PACK v2` explicit readiness evaluation (Slices 3B.1–3B.2B.5)
 
-`evaluateBlogWritingPackV2Readiness({package_id, workspace_id, requirements},
+The slice sections below describe implemented behavior at `6d28411`, with the
+GA4 metric/property-window follow-ups explicitly noted below, not automatic
+adoption of the 2026-10-17 approved delivery requirements above. Slice-era references
+to unapproved meanings/decisions must be read with that resolution table; source
+gaps and conservative runtime blockers remain until separately implemented.
+
+`evaluateBlogWritingPackV2Readiness({package_id, workspace_id, requirements, evaluated_at?},
 {store, repository, loader})` reads `BLOG_DRAFT.json` through `readDraft` and
 returns an in-memory evaluation; it never writes or promotes the draft. The
 version-1 requirements profile is explicit input with `recipe_version: 2`,
@@ -664,8 +1006,10 @@ decision lists cannot approve unresolved meanings, scope or source capabilities;
 absent families remain MISSING. Real Blog v2 COMPLETE coverage remains blocked
 on the explicit decisions and acquisition gaps documented below.
 
-`BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS` records current real open decisions
-and known source gaps, with no automatic date or metric defaults. Using it cannot
+`BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS` records the prior checkpoint's open
+decisions and source gaps, with no automatic date or metric defaults. It has not
+been updated to encode all 2026-10-17 approvals; GA4 users/time/window defaults are
+resolved, as are SERP capture/freshness defaults; actual compliance/legacy gaps are checked per artifact. Using it cannot
 produce real COMPLETE coverage while those blockers remain. Blockers carry a
 dataset type, mandatory/optional designation, actual selection IDs, requirement,
 expected/actual safe condition, and next action. Supported codes are
@@ -794,7 +1138,7 @@ sanitized source/task/FILE_IMPORT context; it never reopens the original file_pa
 | product_name | Product title / İsim / existing title aliases → product_title | Alias to product_name; blank stays null with observation blocker. No slug/name reconstruction. |
 | product_url | Existing URL / Product URL / Ürün URL aliases → url | Alias only when present; no URL construction. Absent header versus blank cell stays distinct. Invalid/non-HTTP(S) URL representations block. Missing source URL requires separate evidence/import support. |
 | category | Categories / Kategoriler, Categories / product type / Kategori, Product type / Tip | Native strings remain separate; no category ID/hierarchy interpretation, delimiter splitting, primary-category choice or singular alias. DECISION_REQUIRED. |
-| price | Price / Fiyat / Satış Fiyatı → price; Sale price aliases → separate sale_price | Existing numeric parsing and per-variant rows retained, including null/zero; no product-price selection, minimum, aggregation or sale/list equivalence. DECISION_REQUIRED for Blog price meaning. |
+| price | Price / Fiyat / Satış Fiyatı → price; Sale price aliases → separate sale_price | Existing numeric parsing and per-variant rows retained, including null/zero; no product-price selection, minimum, aggregation or sale/list equivalence. Runtime retains DECISION_REQUIRED; the approved Blog price meaning above is not implemented. |
 | availability | Existing normalized availability derivation from deleted, variant_active, stock and continue_selling | Native derived variant value retained; product-level meaning unresolved. A direct raw availability column is currently replaced by the legacy derivation and cannot be treated as preserved direct product availability. DECISION_REQUIRED. |
 | stock_status | Numeric stock is an independent observation; no approved product stock-status mapping | UNSUPPORTED / SOURCE_CHANGE_REQUIRED. Never inferred from availability or fabricated as zero. |
 | product_status | Native deleted/variant-active/channel flags remain independent | No approved product lifecycle/publication mapping: UNSUPPORTED / SOURCE_CHANGE_REQUIRED. No fabricated active/draft/archive/publication state. |
@@ -807,7 +1151,7 @@ contract; no provider acquisition or import schema extension was made here.
 
 Read-only field reports retain existing observed/null/absent counts and introduce
 UNSUPPORTED for known capability gaps. UNRESOLVED distinguishes present native
-values from unapproved downstream meaning; no singular category value is emitted.
+values from unimplemented or still-unresolved downstream interpretation; no singular category value is emitted.
 Native price/availability counts do not claim approved product-level semantics.
 Missing required observations use FIELD_OBSERVATION_REQUIRED. Absent supported
 columns use FIELD_ABSENT. Invalid workbook, IDs/schema, numeric observations or
@@ -894,18 +1238,19 @@ and any required freshness decisions. This slice implements none of those source
 extensions. Delivery remains NOT_EVALUATED, with EXPLICIT_REQUIREMENTS_ONLY and
 NOT_READY/PARTIAL/COMPLETE unchanged. Full Blog v2 delivery is not established.
 
-### `BLOG_WRITING_PACK v2` SERP snapshot compliance (Slice 3B.2B.4)
+### `BLOG_WRITING_PACK v2` SERP snapshot compliance (Slice 3B.2B.4 + acquisition/draft-freshness follow-ups)
 
 Accepted `serpapi` / GOOGLE_SERP bytes pass through unchanged selection, frozen
 draft and accepted-artifact integrity checks. SerpApi-local `inspectSerpApiFields`
-reuses the existing request validator and `parseSerpApiResponse`; acquisition,
-parsing, source validation, loader and v1 export behavior are unchanged.
+reuses the existing request validator and `parseSerpApiResponse`. The acquisition
+follow-up below adds receipt metadata and accepted loading; provider row parsing,
+source validation and v1 export/publication behavior remain unchanged.
 
 | Blog field | Actual evidence and existing normalization | Compliance |
 | --- | --- | --- |
 | query | Requested query is a source request dimension; provider search_parameters.q must equal it before normalization | Checked with origin REQUEST_DIMENSION_VERIFIED_BY_PROVIDER; never an independent result-text observation or a fallback for missing provider q. |
-| capture_date | Requested snapshot_date is context; artifact acquired_at is local acquisition provenance. Provider search_metadata, including any generation/processing timestamps, remains in raw bytes; no capture timestamp is normalized | UNRESOLVED / DECISION_REQUIRED even with cleared profile decisions. No date, timezone or timestamp mapping is introduced. |
-| position | organic_results[].position → positive integer position | Provider organic position only, never array index or absolute SERP rank. PAA has normalized null position and no supported rank field. Blog ranking/result scope remains DECISION_REQUIRED. |
+| capture_date | UTC date derived from the verified serp_acquisition.response_received_at instant, independently preserved with metadata identity/hash/size. Requested snapshot_date, acquired_at (artifact.created_at) and raw provider dates never substitute | DERIVED with derived_count, zero provider-observed count and DERIVED_FROM_COLLECTOR_RESPONSE_RECEIPT origin; absent receipt yields UNRESOLVED / ACQUISITION_UNAVAILABLE and an explicit evidence blocker. |
+| position | organic_results[].position → positive integer position | Provider organic position only, never array index or absolute SERP rank. PAA has normalized null position and no supported rank field. The inspector retains DECISION_REQUIRED despite the approved organic scope above. |
 | url | organic_results[].link or related_questions[].link → existing validated HTTP(S) url | Provider result link only. Missing property versus explicit null/empty remains distinct in field counts. No construction from query/domain. |
 | title | organic_results[].title → nullable title | Provider organic title only. PAA has normalized null title; question text or an unnormalized PAA title property cannot fill it. No slug/query/metadata reconstruction. |
 | domain | Existing parser derives lower-case URL.hostname from observed HTTP(S) link | Origin DERIVED_FROM_OBSERVED_URL, not direct provider domain observation. Missing link has no domain; invalid links fail, and unrelated raw domain text is ignored. |
@@ -937,42 +1282,113 @@ FIELD_OBSERVATION_REQUIRED; existing parser empty-string-to-null behavior is
 retained. Real zero is never substituted for missing: organic position zero is
 invalid under the unchanged positive-integer source contract. PAA position/title
 are not counted as observed merely because normalized properties exist.
-capture_date stays UNRESOLVED with zero observed count and an independent semantic
-decision; it never receives a fabricated value. Empty VALID/NO_DATA/LOW_DATA
-cannot establish fields, while warning verdict/coverage decisions remain separate.
+capture_date has zero provider-observed count; verified derived dates have separate
+derived_count and DERIVED status. Unknown receipt never receives a fabricated
+date. Empty VALID/NO_DATA/LOW_DATA cannot establish fields, while warning verdict/
+coverage decisions remain separate.
 
-Mandatory SERP coverage always retains DECISION_REQUIRED for capture_date,
-position_semantics (organic/absolute and result-type scope), search_context
-(including Blog query role), query_coverage and freshness. Empty caller decision
-lists cannot approve these unspecified requirements. Source VALID alone cannot
-satisfy Blog SERP coverage. Approving the capture basis/timezone, query/result and
-search-context scope, required query set/completeness and snapshot-age policy
-requires a separate contract decision. Independent provider timestamps/domains,
-absolute ranks or additional result categories would require separately approved
+The current runtime retains DECISION_REQUIRED for position_semantics,
+search_context and query_coverage. Capture/freshness decisions are replaced by
+mandatory per-evidence checks below, regardless of empty caller decision lists.
+Source VALID alone cannot satisfy Blog
+SERP coverage. The exact required query set/completeness still needs an explicit
+selection decision; the approved meanings require implementation and verification.
+Independent provider timestamps/domains, absolute ranks or additional result
+categories would require separately approved
 source capabilities if demanded; none are acquired or normalized in this slice.
 
 Coverage states and EXPLICIT_REQUIREMENTS_ONLY are
 unchanged, delivery remains NOT_EVALUATED, and no full Blog v2 delivery or new
 real-provider acceptance is established.
 
-### `BLOG_WRITING_PACK v2` GA4 Content Performance compliance (Slice 3B.2B.5)
+**Response acquisition provenance (2026-10-17):** the existing HTTP requester
+notifies the SERP client immediately after the complete response body has arrived,
+before text decoding or JSON parsing. Only that notification records the injected
+collector clock as canonical UTC `YYYY-MM-DDTHH:mm:ss.sssZ`. Provider request/error
+classification and raw response bytes remain separate. A custom requester without
+that notification supplies no receipt evidence; promise completion is not a
+fallback clock boundary.
+
+The SERP source emits existing `acquisition_metadata` containing
+`response_received_at` and `response_received_at_origin:
+COLLECTOR_OBSERVED_RESPONSE_RECEIPT`. The unchanged orchestrator/MetadataManager
+persists these in its existing attempt-scoped metadata JSON, separately from raw
+provider bytes. Native exclusive-create persistence refuses overwrite; retries
+retain separate raw files, metadata and timestamps. Artifact registration and
+metadata `retrieved_at` are later lifecycle provenance, not replacement clocks.
+
+`readAcceptedJobArtifact` / `verifyAcceptedJobArtifact` validate SERP sidecar
+source/Run/Job/raw Artifact/path/Attempt-number/request-context binding and return
+optional `serp_acquisition` with the receipt fields, Attempt ID and metadata file
+path/hash/size. The v2 resolver additionally verifies the actual accepted Attempt
+ID and freezes that provenance. Reevaluation compares the snapshot and rechecks
+it at field loading; changed or removed metadata cannot silently change membership.
+The metadata hash freezes loaded bytes; it is not a new database artifact or a
+provider attestation. Legacy absent sidecars or absent acquisition_metadata remain
+readable with no receipt observation. Explicit malformed/incomplete/noncanonical
+UTC or conflicting new provenance is rejected, never completed from lifecycle,
+request or provider dates. No historical timestamps are reconstructed.
+
+**Capture date and draft-time freshness:** after accepted loading and frozen
+provenance comparisons, the SERP inspector derives capture_date from the verified
+UTC timestamp's date component. This read-only Blog value is not a native provider
+observation or a persisted raw/normalized artifact rewrite. `serp_provenance` marks
+the derivation and `serp_freshness.acquisition` preserves the full receipt instant
+and its metadata reference; field-check Run/Job/Artifact identity links to the
+unchanged selected Attempt/Validation provenance.
+
+The readiness evaluator uses immutable draft.created_at by default. Optional
+explicit `evaluated_at` reevaluates this draft's SERP evidence at that UTC instant;
+it does not change GA4's draft.created_at reference. Full UTC references include
+date, hours, minutes, seconds and Z, with optional millisecond precision. Date-only,
+malformed and rolled-over dates are invalid references, never replaced by host
+time. `reference_origin` distinguishes DRAFT_CREATED_AT and
+EXPLICIT_DRAFT_EVALUATION; no Date.now or cached readiness verdict is used.
+
+The approved maximum seven-day elapsed age is inclusive:
+`0 <= age_ms = evaluated_at - response_received_at <= 604800000`.
+There is no date-only comparison, calendar rounding, timezone shift or tolerance.
+Six days and exactly seven days pass this check; seven days plus one second is
+STALE, and negative age is FUTURE. Both produce EVIDENCE_INVALID / serp_freshness.
+Missing receipt produces FIELD_OBSERVATION_REQUIRED / serp_acquisition; invalid
+reference produces EVIDENCE_INVALID / serp_reference_time. Malformed/conflicting
+or unverifiable metadata fails existing accepted-evidence revalidation, while
+changed hash/path/size or removed provenance blocks frozen membership checks.
+These failures never alter source acceptance, prior Attempts or selected evidence.
+The read-only freshness context records age, limit, reference, provenance and
+status, independently of other SERP query/scope coverage blockers.
+
+Draft assembly remains membership-only with readiness NOT_EVALUATED; callers
+invoke readiness for draft-time compliance. Default reevaluation repeats the
+original draft-time check; an explicit later reference can make the same frozen
+evidence stale. No result is cached or written back, and newer unselected Runs
+never replace membership. Draft-time tests establish no package delivery claim.
+The separate v2 JSON-only publisher above independently revalidates freshness at
+its actual creation timestamp; a prior draft-time pass is insufficient. The v1
+publisher and reader retain their existing formats.
+
+### `BLOG_WRITING_PACK v2` GA4 Content Performance compliance (Slice 3B.2B.5 + metric/property-window follow-ups)
 
 The existing GA4 source acquires Content Performance separately from Paid Funnel.
 `inspectGoogleAnalytics4ContentFields` inspects accepted bundle bytes through the
 same frozen membership and verified-byte seam. It reuses the source's existing
-pure context/bundle validation helpers and normalizer. The two validator helpers
-are now exported for source-local reuse; their behavior is unchanged. No provider
-request, acquisition report, metric list, source validator verdict or parser
-normalization is changed.
+pure context/bundle validation helpers and normalizer. The metric-completion
+follow-up extends new Content requests with `totalUsers` and
+`userEngagementDuration`, following the original eleven metrics. New Content raw
+bundles use `bundle_schema_version: 2`; legacy Content and Paid Funnel retain
+version 1. Each version has exact validated header names, types, order and row
+widths; v2 requires `totalUsers / TYPE_INTEGER` and
+`userEngagementDuration / TYPE_SECONDS`. Missing/reordered/substituted headers or
+mixing legacy and new page schemas fail closed. No provider bytes are rewritten.
 
 | Blog field | Existing requested/returned GA4 field | Mapping / type / limits |
 | --- | --- | --- |
 | landing_page | landingPage dimension; dimensionHeaders and dimensionValues | Existing landing_page string, preserving exact text including `(not set)`. That placeholder is valid provider evidence, not an identified page. It is the first-pageview path dimension, not landingPagePlusQueryString, pagePath, pageLocation or a fabricated absolute URL. |
 | sessions | sessions / TYPE_INTEGER | Native nullable number of sessions; no users-to-sessions inference. |
-| users | Only activeUsers / TYPE_INTEGER is acquired and normalized as active_users | UNSUPPORTED for Blog users. totalUsers is not requested or normalized; its proposed Blog alias remains unapproved. Never copy/reconstruct from active_users. |
+| users | totalUsers / TYPE_INTEGER → total_users in Content v2 | Blog users aliases total_users only. activeUsers → active_users remains separate. Legacy v1 has no total_users observation and stays UNSUPPORTED for users. |
 | engaged_sessions | engagedSessions / TYPE_INTEGER | Native nullable number of engaged sessions; not calculated from a rate. |
 | engagement_rate | engagementRate / TYPE_FLOAT | Native nullable fraction, with no scaling to percentage and no recomputation from other metrics. |
-| average_engagement_time | No engagement-duration metric or approved expression is acquired | UNSUPPORTED with independent DECISION_REQUIRED and SOURCE_CHANGE_REQUIRED. No calculation, zero/null placeholder or averageSessionDuration alias is emitted. |
+| average_engagement_time | userEngagementDuration / TYPE_SECONDS → user_engagement_duration, with native sessions | The source-local inspector derives userEngagementDuration / sessions in seconds per session; it never aliases averageSessionDuration. Legacy v1 lacks duration and remains UNSUPPORTED. |
 | key_events | keyEvents / TYPE_FLOAT | Native nullable key-event count, retaining the source's fractional-capable representation. No eventCount/conversions substitute or historical equivalence assumption. |
 
 Provider meanings and units are documented in the
@@ -980,18 +1396,33 @@ Provider meanings and units are documented in the
 User engagement duration is total seconds; average session duration is a different
 metric. Google's [predefined reports](https://developers.google.com/analytics/devguides/reporting/data/v1/predefined-reports)
 illustrate distinct engagement-duration expressions per session and per active
-user. Neither denominator nor either expression is approved for this Blog field.
-The current source acquires none of those duration metrics/expressions. Approve
-the exact Blog meaning first, then separately extend acquisition/normalization/
-validation if required. totalUsers support likewise needs an approved users
-contract and a separate source change while preserving active_users distinctly.
+user. The 2026-10-17 approval selects engagement seconds per session for Blog v2.
+Content v2 acquires the two native metrics and preserves them in source-normalized
+`total_users` and `user_engagement_duration`; it adds no derived field to native
+source rows. Legacy v1 normalization retains its original row shape and never
+backfills these metrics. Paid Funnel's metric schema and row shape remain unchanged.
+The shared numeric parser now treats whitespace-only values as null in both
+datasets, preserving actual numeric zeros.
+
+The source-local Blog inspector adds `users`, `average_engagement_time` and
+`average_engagement_time_reason` separately from native normalized fields. The
+derived value requires present non-null duration and positive integral sessions;
+real zero duration produces zero. Otherwise the value is null with reason
+MISSING_USER_ENGAGEMENT_DURATION, MISSING_SESSIONS, NON_POSITIVE_SESSIONS,
+INVALID_SESSIONS or INVALID_USER_ENGAGEMENT_DURATION. Negative duration or invalid
+session counts cannot establish Blog time compliance. Absent provider cells remain
+ABSENT independently of normalized null; explicit null/blank stays NULL, and
+whitespace-only numeric cells cannot become observed zero. Malformed/non-finite
+numeric values fail closed. Legacy missing metrics remain SOURCE_CHANGE_REQUIRED;
+the approved meanings no longer generate users/time DECISION_REQUIRED defaults.
 
 The existing exact Content header names/types/order, single landingPage granularity,
 bundle dataset identity, page offsets and request limit are rechecked. Paid Funnel
-bundles, extra date/device/page dimensions, substituted metrics and unapproved
-totalUsers/duration columns fail FIELD_REPRESENTATION_INVALID; their original raw
+bundles, extra date/device/page dimensions, substituted metrics or columns outside
+the selected bundle version fail FIELD_REPRESENTATION_INVALID; their original raw
 observations remain unchanged. The inspector also requires normalized row count
-to equal the bundle's declared total. No duplicate rows or independent Jobs are
+to equal the bundle's declared total; source validation also rejects incomplete
+normalized row counts. No duplicate rows or independent Jobs are
 removed, and metrics are never merged across windows/properties/populations.
 
 Presence is inspected at each actual provider cell's `value` property. A missing
@@ -1001,7 +1432,7 @@ Malformed numeric values, missing/mismatched headers or incompatible representat
 fail safely rather than becoming zero. Blank landing-page observations produce
 FIELD_OBSERVATION_REQUIRED; no path reconstruction occurs. Empty accepted
 VALID/NO_DATA/LOW_DATA cannot prove required observations, with independent original
-source verdict/coverage blockers. Source validation itself remains unchanged.
+source verdict/coverage blockers.
 
 GA4-local inspection marks `(not set)` as an unresolved landing-page observation
 without changing its raw or normalized value. The shared helper's source-neutral
@@ -1012,36 +1443,72 @@ landing_page UNRESOLVED and produces FIELD_OBSERVATION_REQUIRED through the
 existing evaluator. A legitimate path alone remains OBSERVED. Raw rows, source
 validation, blank/null/missing behavior, metadata and independent provenance are
 unchanged; another source's identical text receives no GA4 interpretation. This
-does not approve page completeness or any other unresolved coverage policy.
+does not establish full Blog compliance or resolve remaining coverage decisions.
 
 Optional `ga4_requested_dates: {start_date, end_date} | null` adds ordered real
 calendar endpoints to the existing version-1 explicit requirements profile.
 Missing/null endpoints remain DECISION_REQUIRED (`ga4_requested_dates`) even with
 empty decision lists; provided endpoints compare exactly with every verified
 Content Job's `start_date`/`end_date`, producing WINDOW_MISMATCH on disagreement.
-No 28/90-day or Paid Funnel duration is inherited. Existing open profile decisions
-still require resolution; supplying dates does not silently clear them.
+Endpoint equality is additional to the mandatory property-calendar check below;
+supplying matching endpoints cannot bypass it. No Paid Funnel window is inherited.
 
 Bundle dates must match frozen Job context independently of Blog endpoint approval
 (`ga4_request_window` / WINDOW_MISMATCH). Request context must be Content Performance
 without Paid Funnel filters; supplied property_id must be numeric and match the
 bundle's recorded acquisition property (`ga4_request_context` / EVIDENCE_INVALID).
+Source validation now also accepts optional numeric property_id and compares it
+with the raw acquisition request; absent legacy identity remains absent.
 Legacy Jobs without frozen property_id remain usable for inspection but retain
 DECISION_REQUIRED (`property_scope`); raw acquisition identity does not retroactively
 freeze a reviewed property or establish independent provider identity observation.
 
+Draft readiness evaluates the last 28 completed calendar days at the stored
+immutable `draft.created_at` instant. PUBLICATION evaluation instead uses its
+explicit package-creation UTC instant, independently of the draft result. Neither
+uses host timezone, an implicit Date.now or artifact acquisition time.
+This is an evaluation reference, never a provider reporting observation. The
+GA4-local calculation obtains that instant's calendar date in the property timezone,
+then requires yesterday through 28 days before today, inclusive. It uses calendar
+date arithmetic independent of daylight-saving day length. Invalid or ambiguous
+reference timestamps fail with EVIDENCE_INVALID (`ga4_reference_time`).
+
+Timezone comes only from actual accepted response `metadata.timeZone`. At least
+one nonblank observation is required; every supplied nonblank timezone must be
+valid and agree after canonicalizing supported aliases. Missing timezone produces
+FIELD_OBSERVATION_REQUIRED (`ga4_timezone`); invalid/conflicting observations produce
+EVIDENCE_INVALID (`ga4_timezone`). No default, Workspace configuration or other
+artifact supplies missing observations. Legacy v1 uses only its own existing
+metadata and frozen property context; it is never upgraded or rewritten.
+
+Requests outside the calculated window produce WINDOW_MISMATCH
+(`ga4_completed_days`) even when explicit endpoints match caller requirements or
+decision lists are empty. Read-only `ga4_context.reporting_window` records the
+expected start/end, reference instant with DRAFT_CREATED_AT origin, and canonical
+timezone with PROVIDER_RESPONSE_METADATA origin. Original requested dates remain
+separate; no observed reporting dates, daily rows or zero-activity days are invented.
+Selected Jobs with different acquisition properties produce EVIDENCE_INVALID
+(`ga4_property_scope`); conflicting observed timezones across selected Jobs produce
+EVIDENCE_INVALID (`ga4_timezone`). Existing multi-Job population blockers remain.
+
 Read-only `field_checks.ga4_context` preserves the bundle's recorded property,
 requested endpoints, validated response header names and existing normalized
-provider currency/timezone metadata per Job. It contains no business row values.
+provider currency/timezone metadata per Job. Its additive `metric_provenance`
+describes the totalUsers alias, native engagement duration in seconds and the
+derived expression/unit. These are mapping definitions, not proof that legacy
+artifacts contain the metrics; presence/field checks establish actual observations.
+It contains no business row values.
 These are requested/acquisition fields and provider metadata, not an invented
 observed reporting period. Acquisition time and every original membership/context/
 Run/Job/Attempt/Validation/Artifact reference remain unchanged. No current Workspace
 connection, newer Run or inferred property timezone repairs historical evidence.
 
-Mandatory GA4 coverage retains users/time semantic and source-capability blockers
-and DECISION_REQUIRED (`content_coverage`) for unapproved page/property/population
-completeness, even when decision lists are empty. Multiple legitimate Jobs remain
-independent with existing multi_job_coverage blockers; there is no one-Job restriction.
+The runtime checks users/time capability per artifact rather than globally blocking
+new supported Content evidence. DECISION_REQUIRED (`content_coverage`) remains
+independent of the all-returned-row policy. Missing legacy provenance and population/
+warning coverage remain independent blockers, even when decision lists are empty. Multiple legitimate
+Jobs remain independent with existing multi_job_coverage blockers; there is no
+one-Job restriction.
 All seven families now have inspection, but their documented gaps still prevent
 real COMPLETE readiness. NOT_READY/PARTIAL/COMPLETE, EXPLICIT_REQUIREMENTS_ONLY and
 delivery NOT_EVALUATED remain unchanged. No live GA4 or delivery acceptance is claimed.

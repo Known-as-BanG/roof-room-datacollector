@@ -117,6 +117,13 @@ export const resolveBlogWritingPackV2Selections = async (
       || verified.artifact.sha256 !== artifact.sha256
       || verified.artifact.byte_size !== artifact.byte_size
     ) throw new Error('Blog v2 verified artifact identity changed.');
+    if (verified.serp_acquisition && verified.serp_acquisition.attempt_id !== attempt.attempt_id) {
+      throw new Error('Blog v2 SERP acquisition metadata Attempt identity changed.');
+    }
+
+    if (verified.gsc_date_coverage && verified.gsc_date_coverage.attempt_id !== attempt.attempt_id) {
+      throw new Error('Blog v2 GSC date metadata Attempt identity changed.');
+    }
 
     resolved.push({
       workspace_id: run.workspace_id,
@@ -133,6 +140,8 @@ export const resolveBlogWritingPackV2Selections = async (
       requested_context: verified.requested_context,
       observed_context: null,
       acquired_at: artifact.created_at,
+      ...(verified.serp_acquisition ? { serp_acquisition: verified.serp_acquisition } : {}),
+      ...(verified.gsc_date_coverage ? { gsc_date_coverage: verified.gsc_date_coverage } : {}),
     });
   }
   return resolved;

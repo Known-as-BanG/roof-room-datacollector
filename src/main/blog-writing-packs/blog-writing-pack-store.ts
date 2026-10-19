@@ -20,6 +20,9 @@ import {
 import type { DataPackage } from '../../shared/data-package';
 import type { BlogWritingPackV2Draft } from '../../shared/blog-writing-pack-v2-draft';
 import { parseBlogWritingPackV2Draft } from './blog-writing-pack-v2-draft';
+import type { BlogV2FileReference, BlogWritingPackV2Payload, BlogWritingPackV2PublicationManifest, PublishedBlogWritingPackV2 } from '../../shared/blog-writing-pack-v2-publication';
+import { blogV2FileReference, blogV2JsonBytes, readBlogV2Publication, requireBlogV2FileReference, validateBlogV2Publication } from './blog-writing-pack-v2-publication-format';
+import { isDeepStrictEqual } from 'node:util';
 import { writeDataPackageEvidence } from '../export/data-package-exporter';
 import {
   BLOG_WRITING_PACK_RECIPE,
@@ -382,5 +385,57 @@ export class BlogWritingPackStore {
   async readDraft(package_id: string): Promise<BlogWritingPackV2Draft> {
     const packageId = safeSegment(package_id, 'draft package_id');
     return this.validateDraft(inside(this.root, packageId, 'draft'), packageId);
+  }
+
+  async publishJsonV2(package_id: string, prepare: (writeEvidence: (reference: BlogV2FileReference, bytes: Uint8Array) => Promise<void>) => Promise<{
+    payload: BlogWritingPackV2Payload; manifest: Omit<BlogWritingPackV2PublicationManifest, 'files'>;
+  }>): Promise<PublishedBlogWritingPackV2> {
+    const packageId = safeSegment(package_id, 'v2 package_id');
+    await mkdir(this.root, { recursive: true });
+    const finalDirectory = inside(this.root, packageId, 'v2 package');
+    if (await exists(finalDirectory)) throw new Error('Blog v2 package exists; refusing overwrite.');
+    const lock = inside(this.root, `${packageId}.publishing`, 'v2 publication reservation');
+    await mkdir(lock);
+    let staging: string | undefined;
+    try {
+      if (await exists(finalDirectory)) throw new Error('Blog v2 package exists; refusing overwrite.');
+      staging = await mkdtemp(path.join(this.root, `.${packageId}.tmp-`));
+      const directory = staging;
+      const files: BlogV2FileReference[] = [];
+      const prepared = await prepare(async (reference, bytes) => {
+        requireBlogV2FileReference(reference);
+        if (!reference.relative_path.startsWith('evidence/') || !isDeepStrictEqual(blogV2FileReference(reference.relative_path, bytes), reference)) {
+          throw new Error('Invalid v2 evidence integrity or path.');
+        }
+        const filename = path.join(directory, reference.relative_path);
+        await mkdir(path.dirname(filename), { recursive: true });
+        await writeFile(filename, bytes, { flag: 'wx' });
+        files.push({ ...reference });
+      });
+      const payloadBytes = blogV2JsonBytes(prepared.payload);
+      const value: PublishedBlogWritingPackV2 = { payload: prepared.payload,
+        manifest: { ...prepared.manifest, files: [blogV2FileReference('payload.json', payloadBytes), ...files] } };
+      validateBlogV2Publication(value, packageId);
+      await writeFile(path.join(directory, 'payload.json'), payloadBytes, { flag: 'wx' });
+      await writeFile(path.join(directory, 'manifest.json'), blogV2JsonBytes(value.manifest), { flag: 'wx' });
+      const verified = await readBlogV2Publication(directory, packageId);
+      if (await exists(finalDirectory)) throw new Error('Blog v2 package exists; refusing overwrite.');
+      await rename(directory, finalDirectory);
+      staging = undefined;
+      return verified;
+    } finally {
+      if (staging) {
+        try { await rm(staging, { recursive: true, force: true }); }
+        finally { await rm(lock, { recursive: true, force: true }); }
+      } else {
+        // A committed, verified package remains successful even if reservation cleanup fails.
+        await rm(lock, { recursive: true, force: true }).catch((): void => {});
+      }
+    }
+  }
+
+  async readJsonV2(package_id: string): Promise<PublishedBlogWritingPackV2> {
+    const packageId = safeSegment(package_id, 'v2 package_id');
+    return readBlogV2Publication(inside(this.root, packageId, 'v2 package'), packageId);
   }
 }

@@ -2,6 +2,7 @@ import type {
   SerpApiNormalizedRow,
   SerpApiParsedResponse,
   SerpApiRequestContext,
+  SerpApiResponseAcquisition,
 } from '../../../shared/serpapi';
 
 export type SerpApiParseErrorCode =
@@ -24,6 +25,18 @@ const isRecord = (
   value: unknown,
 ): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+export const parseSerpApiResponseAcquisition = (value: unknown): SerpApiResponseAcquisition => {
+  if (!isRecord(value) || typeof value.response_received_at !== 'string'
+    || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/u.test(value.response_received_at)
+    || !Number.isFinite(Date.parse(value.response_received_at))
+    || new Date(value.response_received_at).toISOString() !== value.response_received_at
+    || value.response_received_at_origin !== 'COLLECTOR_OBSERVED_RESPONSE_RECEIPT') {
+    throw new SerpApiParseError('INVALID_SCHEMA', 'SERP response acquisition metadata is invalid.');
+  }
+  return { response_received_at: value.response_received_at,
+    response_received_at_origin: value.response_received_at_origin };
+};
 
 const nullableString = (
   value: unknown,

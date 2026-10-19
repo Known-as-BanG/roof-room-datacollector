@@ -95,6 +95,7 @@ export class SerpApiSource implements CollectingDataSourceModule {
         preferred_filename: `serpapi-${safeJobKey || 'query'}.json`,
         media_type: 'application/json',
         bytes,
+        ...(result.acquisition_metadata ? { acquisition_metadata: { ...result.acquisition_metadata } } : {}),
       };
     } catch (error) {
       if (error instanceof SerpApiError) {

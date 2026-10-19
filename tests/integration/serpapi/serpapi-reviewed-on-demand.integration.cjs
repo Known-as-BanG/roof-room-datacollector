@@ -12,6 +12,10 @@ const { createProductionCollectionRuntime } = load('main/app/production-collecti
 const { InMemoryCredentialStore } = load('main/core/credential-store.js');
 const { initializeDatabase, getDatabasePath } = load('main/storage/database.js');
 const { StateRepository } = load('main/storage/state-repository.js');
+const { StorageManager } = load('main/storage/storage-manager.js');
+const { ProductionDataPackageLoader } = load('main/export/production-data-package-loader.js');
+const { assembleBlogWritingPackV2Draft } = load('main/blog-writing-packs/blog-writing-pack-assembler.js');
+const { BlogWritingPackStore } = load('main/blog-writing-packs/blog-writing-pack-store.js');
 
 const SOURCE = 'serpapi';
 const TASK = 'serpapi-serp-snapshot';
@@ -34,7 +38,8 @@ const expectedContext = (entry) => ({
   snapshot_date: '2026-09-18',
 });
 
-test('SERPAPI-REVIEW-CORE-001: explicit reviewed queries persist and bind one provider request per Job', async (t) => {
+test('SERPAPI-REVIEW-CORE-001: reviewed queries and retry Attempts retain distinct response acquisition provenance through draft loading', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: Date.parse('2026-09-18T10:00:00.000Z') });
   const root = path.join(workRoot, 'review-core');
   const directories = Object.fromEntries(
     ['config', 'data', 'database', 'browser_profiles', 'logs', 'public_downloads']
@@ -101,6 +106,7 @@ test('SERPAPI-REVIEW-CORE-001: explicit reviewed queries persist and bind one pr
   const credentials = new InMemoryCredentialStore();
   credentials.put('serpapi:test', 'fixture-secret');
   const providerRequests = [];
+  const receiptTimes = ['2026-09-19T10:00:00.123Z', '2026-09-19T11:00:00.456Z', '2026-09-19T12:00:00.789Z'];
   const runtime = createProductionCollectionRuntime({
     repository,
     directories,
@@ -109,12 +115,15 @@ test('SERPAPI-REVIEW-CORE-001: explicit reviewed queries persist and bind one pr
       providerRequests.push(request);
       const url = new URL(request.url);
       const query = url.searchParams.get('q');
+      t.mock.timers.setTime(Date.parse(receiptTimes[providerRequests.length - 1]));
+      request.on_response_received?.();
+      t.mock.timers.setTime(Date.now() + 30_000);
       return {
         status: 200,
         body: {
           search_metadata: { status: 'Success' },
           search_parameters: {
-            engine: 'google', q: query, gl: 'tr', hl: 'tr', device: 'desktop', start: 0,
+            engine: 'google', q: providerRequests.length === 1 ? 'wrong query' : query, gl: 'tr', hl: 'tr', device: 'desktop', start: 0,
           },
           organic_results: [{ position: 1, title: 'Result', link: 'https://example.com/page' }],
           related_questions: [],
@@ -130,8 +139,23 @@ test('SERPAPI-REVIEW-CORE-001: explicit reviewed queries persist and bind one pr
   });
   await runtime.orchestrator.runUntilBlocked(started.run.run_id);
 
-  assert.equal(providerRequests.length, 2);
-  assert.deepEqual(providerRequests.map((request) => new URL(request.url).searchParams.get('q')), queries.map((entry) => entry.query));
+  const failedJob = repository.listJobs(started.run.run_id).find((job) => job.validation_status === 'QUERY_MISMATCH');
+  assert.ok(failedJob);
+  const firstAttempt = repository.listAttempts(failedJob.job_id)[0];
+  const firstArtifact = repository.getArtifact(firstAttempt.candidate_artifact_id);
+  const metadataDirectory = path.join(directories.runs, started.run.run_id, SOURCE, 'metadata');
+  const originalMetadataFile = path.join(metadataDirectory, `${failedJob.job_key}.metadata.json`);
+  const originalMetadata = fs.readFileSync(originalMetadataFile);
+  const originalRawFile = path.join(directories.runs, started.run.run_id, firstArtifact.relative_path);
+  const originalRaw = fs.readFileSync(originalRawFile);
+  assert.equal(JSON.parse(originalMetadata).acquisition_metadata.response_received_at, receiptTimes[0]);
+  const retry = repository.reacquireRunAndStartRetryAttempt({ job_id: failedJob.job_id, max_attempts: 2 });
+  assert.ok(retry);
+  await runtime.orchestrator.executeStartedAttempt(started.run.run_id, failedJob.job_id, retry);
+  await runtime.orchestrator.runUntilBlocked(started.run.run_id);
+
+  assert.equal(providerRequests.length, 3);
+  assert.deepEqual(providerRequests.map((request) => new URL(request.url).searchParams.get('q')), [...queries.map((entry) => entry.query), failedJob.source_context.query]);
   for (const request of providerRequests) {
     const url = new URL(request.url);
     assert.equal(url.searchParams.get('engine'), 'google');
@@ -143,7 +167,35 @@ test('SERPAPI-REVIEW-CORE-001: explicit reviewed queries persist and bind one pr
   assert.equal(repository.getRun(started.run.run_id).run_status, 'COMPLETED');
   assert.deepEqual(repository.listJobs(started.run.run_id).map((job) => job.validation_status), ['VALID', 'VALID']);
   const rawFiles = fs.readdirSync(path.join(directories.runs, started.run.run_id, SOURCE, 'raw'));
-  assert.equal(rawFiles.length, 2);
+  assert.equal(rawFiles.length, 3);
   const allRaw = rawFiles.map((file) => fs.readFileSync(path.join(directories.runs, started.run.run_id, SOURCE, 'raw', file), 'utf8')).join('\n');
   assert.equal(/intent|commercial.fit|page.type|recommendation/iu.test(allRaw), false);
+  const storage = new StorageManager(directories);
+  await assert.rejects(storage.persistMetadataJson({ run_id: started.run.run_id, source_id: SOURCE,
+    attempt_number: 1, document_key: failedJob.job_key, document: { overwrite: true },
+  }), /overwrite/i);
+  const loader = new ProductionDataPackageLoader(repository, storage);
+  const accepted = repository.listJobs(started.run.run_id);
+  const selections = [];
+  for (const job of accepted) {
+    const loaded = await loader.readAcceptedJobArtifact(job.run_id, job.job_id);
+    const expectedTime = job.job_id === failedJob.job_id ? receiptTimes[2] : receiptTimes[1];
+    assert.equal(loaded.serp_acquisition.response_received_at, expectedTime);
+    assert.equal(loaded.serp_acquisition.response_received_at_origin, 'COLLECTOR_OBSERVED_RESPONSE_RECEIPT');
+    assert.notEqual(loaded.artifact.created_at, expectedTime);
+    assert.equal(Object.hasOwn(JSON.parse(Buffer.from(loaded.bytes)), 'acquisition_metadata'), false);
+    assert.equal(repository.listAttempts(job.job_id).some((a) => a.attempt_id === loaded.serp_acquisition.attempt_id), true);
+    selections.push({ run_id: job.run_id, job_id: job.job_id, artifact_id: loaded.artifact.artifact_id });
+  }
+  const membership = await assembleBlogWritingPackV2Draft({ package_id: 'serp-receipt',
+    created_at: new Date().toISOString(), application_version: 'test',
+    selection: { recipe_version: 2, workspace_id: workspace.workspace_id, selections },
+  }, { repository, loader });
+  const packageStore = new BlogWritingPackStore(path.join(root, 'drafts'));
+  await packageStore.saveDraft(membership);
+  assert.deepEqual(await packageStore.readDraft('serp-receipt'), membership);
+  assert.deepEqual(fs.readFileSync(originalMetadataFile), originalMetadata);
+  assert.deepEqual(fs.readFileSync(originalRawFile), originalRaw);
+  assert.notEqual(repository.getArtifact(firstArtifact.artifact_id).artifact_state, 'ACCEPTED');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(metadataDirectory, `${failedJob.job_key}.attempt_2.metadata.json`))).acquisition_metadata.response_received_at, receiptTimes[2]);
 });

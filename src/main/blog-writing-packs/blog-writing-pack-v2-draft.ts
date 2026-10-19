@@ -1,4 +1,5 @@
 import type { BlogWritingPackV2Draft } from '../../shared/blog-writing-pack-v2-draft';
+import { parseSerpApiResponseAcquisition } from '../sources/serpapi/serpapi-parser';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -37,6 +38,8 @@ export const parseBlogWritingPackV2Draft = (value: unknown): BlogWritingPackV2Dr
         'workspace_id', 'source_id', 'dataset_type', 'run_id', 'job_id', 'attempt_id',
         'validation_id', 'artifact_id', 'artifact_sha256', 'artifact_byte_size',
         'validation_status', 'requested_context', 'observed_context', 'acquired_at',
+        ...(Object.hasOwn(evidence, 'serp_acquisition') ? ['serp_acquisition'] : []),
+        ...(Object.hasOwn(evidence, 'gsc_date_coverage') ? ['gsc_date_coverage'] : []),
       ])
       || !['workspace_id', 'source_id', 'dataset_type', 'run_id', 'job_id', 'attempt_id',
         'validation_id', 'artifact_id'].every((key) => nonemptyText(evidence[key]))
@@ -47,6 +50,34 @@ export const parseBlogWritingPackV2Draft = (value: unknown): BlogWritingPackV2Dr
       || !isRecord(evidence.requested_context) || evidence.observed_context !== null
       || !nonemptyText(evidence.acquired_at) || !Number.isFinite(Date.parse(evidence.acquired_at))
     ) throw new Error('Blog v2 draft evidence identity or Workspace is invalid.');
+
+    if (Object.hasOwn(evidence, 'serp_acquisition')) {
+      const acquisition = evidence.serp_acquisition;
+      if (evidence.source_id !== 'serpapi' || evidence.dataset_type !== 'GOOGLE_SERP'
+        || !isRecord(acquisition) || !exactKeys(acquisition, ['response_received_at', 'response_received_at_origin',
+          'attempt_id', 'metadata_relative_path', 'metadata_sha256', 'metadata_byte_size'])
+        || acquisition.attempt_id !== evidence.attempt_id
+        || typeof acquisition.metadata_relative_path !== 'string'
+        || !/^serpapi\/metadata\/[A-Za-z0-9][A-Za-z0-9._-]*\.metadata\.json$/u.test(acquisition.metadata_relative_path)
+        || typeof acquisition.metadata_sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(acquisition.metadata_sha256)
+        || !Number.isSafeInteger(acquisition.metadata_byte_size) || (acquisition.metadata_byte_size as number) <= 0) {
+        throw new Error('Blog v2 SERP acquisition provenance is invalid.');
+      }
+      parseSerpApiResponseAcquisition(acquisition);
+    }
+
+    if (Object.hasOwn(evidence, 'gsc_date_coverage')) {
+      const coverage = evidence.gsc_date_coverage;
+      if (evidence.source_id !== 'google-search-console-query-page' || evidence.dataset_type !== 'QUERY_PAGE'
+        || !isRecord(coverage) || !exactKeys(coverage, ['attempt_id', 'metadata_relative_path', 'metadata_sha256', 'metadata_byte_size'])
+        || coverage.attempt_id !== evidence.attempt_id
+        || typeof coverage.metadata_relative_path !== 'string'
+        || !/^google-search-console-query-page\/metadata\/[A-Za-z0-9][A-Za-z0-9._-]*\.metadata\.json$/u.test(coverage.metadata_relative_path)
+        || typeof coverage.metadata_sha256 !== 'string' || !/^[a-f0-9]{64}$/u.test(coverage.metadata_sha256)
+        || !Number.isSafeInteger(coverage.metadata_byte_size) || (coverage.metadata_byte_size as number) <= 0) {
+        throw new Error('Blog v2 GSC date coverage provenance is invalid.');
+      }
+    }
 
     const key = JSON.stringify([evidence.run_id, evidence.job_id, evidence.artifact_id]);
     if (seen.has(key)) throw new Error('Blog v2 draft has duplicate evidence membership.');

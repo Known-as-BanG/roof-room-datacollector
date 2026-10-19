@@ -81,7 +81,9 @@ test('E/G: GSC deterministic aliases preserve metrics and approved 28-day endpoi
   assert.deepEqual(result.rows, [{ query: 'synthetic query', page_url: 'https://example.test/page', clicks: 0, impressions: 10, ctr: 0, average_position: 2.5 }]);
   const { f } = await selected(families[1], gsc());
   const evaluated = await f.evaluate();
-  assert.equal(evaluated.datasets[1].coverage_status, 'SATISFIED');
+  assert.equal(evaluated.datasets[1].coverage_status, 'BLOCKED');
+  assert.ok(evaluated.blockers.some((b) => b.mandatory && b.requirement_id === 'gsc_date_coverage'));
+  assert.equal(evaluated.field_checks[0].gsc_date_coverage.status, 'MISSING_EVIDENCE');
   assert.equal(evaluated.blockers.some((b) => b.code === 'WINDOW_MISMATCH'), false);
 });
 
@@ -123,7 +125,7 @@ test('J: GA4 source and semantic gaps cannot pass through empty requirement list
   const f = fixture(); await f.persist(families.map(([s, d], i) => f.add(`other_${i}`, s, d)));
   const result = await f.evaluate();
   assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'users' && b.code === 'SOURCE_CHANGE_REQUIRED'));
-  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'average_engagement_time' && b.code === 'DECISION_REQUIRED'));
+  assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'average_engagement_time' && b.code === 'SOURCE_CHANGE_REQUIRED'));
   assert.equal(result.coverage_status, 'PARTIAL');
   assert.equal(result.delivery_readiness, 'NOT_EVALUATED');
   assert.equal(BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS.ads_requested_dates, null);

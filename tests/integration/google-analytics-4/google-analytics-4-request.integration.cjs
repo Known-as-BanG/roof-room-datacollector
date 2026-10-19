@@ -114,6 +114,8 @@ async function main() {
       { name: 'ecommercePurchases' },
       { name: 'transactions' },
       { name: 'purchaseRevenue' },
+      { name: 'totalUsers' },
+      { name: 'userEngagementDuration' },
     ]);
 
     assert.equal(calls[0].body.limit, 250000);
@@ -129,7 +131,7 @@ async function main() {
     );
 
     assert.deepEqual(result, {
-      bundle_schema_version: 1,
+      bundle_schema_version: 2,
       dataset_type: 'GA4_CONTENT_PERFORMANCE',
       request: {
         property_id: '123456789',

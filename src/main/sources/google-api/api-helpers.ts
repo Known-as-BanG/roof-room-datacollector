@@ -1,5 +1,5 @@
 export interface ApiResponse { status: number; body: unknown; raw_body?: Uint8Array; request_id?: string; }
-export type ApiRequester = (request: { url: string; method: 'GET' | 'POST'; body?: unknown; headers?: Record<string, string>; return_non_success_response?: boolean }) => Promise<ApiResponse>;
+export type ApiRequester = (request: { url: string; method: 'GET' | 'POST'; body?: unknown; headers?: Record<string, string>; return_non_success_response?: boolean; on_response_received?: () => void }) => Promise<ApiResponse>;
 
 export type GoogleOAuthProviderErrorCode =
   | 'access_denied'
@@ -100,6 +100,8 @@ export const createFetchApiRequester = (
     });
     const contentType = response.headers.get('content-type') ?? '';
     rawBody = new Uint8Array(await response.arrayBuffer());
+    // Complete response-body receipt precedes text decoding and JSON parsing.
+    request.on_response_received?.();
     const textBody = new TextDecoder().decode(rawBody);
     body = contentType.includes('application/json')
       ? (() => {

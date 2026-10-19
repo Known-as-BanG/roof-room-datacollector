@@ -703,6 +703,30 @@ const decisionFor = async (
     'paid-funnel rows must match the locked google / cpc request semantics',
   );
 
+  const metricComplete = structuredClone(contentValidBundle);
+  metricComplete.bundle_schema_version = 2;
+  const metricPage = JSON.parse(metricComplete.pages[0].raw_body_text);
+  metricPage.metricHeaders.push(
+    { name: 'totalUsers', type: 'TYPE_INTEGER' },
+    { name: 'userEngagementDuration', type: 'TYPE_SECONDS' },
+  );
+  for (const row of metricPage.rows) row.metricValues.push({ value: '17' }, { value: '125.5' });
+  metricComplete.pages[0].raw_body_text = JSON.stringify(metricPage);
+  assert.equal((await decisionFor('GA4_CONTENT_PERFORMANCE', metricComplete)).validation_status, 'VALID');
+  for(const artifactBody of [contentValidBundle,metricComplete]){
+    const bound=validationContext({datasetType:'GA4_CONTENT_PERFORMANCE',artifactBody});
+    bound.source_context.property_id='123456789';
+    assert.equal((await validator.validate(bound)).validation_status,'VALID','explicit reviewed property is supported');
+    bound.source_context.property_id='987654321';
+    assert.equal((await validator.validate(bound)).validation_status,'QUERY_MISMATCH');
+    bound.source_context.property_id='properties/123456789';
+    assert.equal((await validator.validate(bound)).validation_status,'QUERY_MISMATCH');
+  }
+  metricPage.rowCount += 1;
+  metricComplete.pages[0].raw_body_text = JSON.stringify(metricPage);
+  assert.equal((await decisionFor('GA4_CONTENT_PERFORMANCE', metricComplete)).validation_status, 'INVALID_SCHEMA',
+    'a version-2 report cannot claim complete pagination while rows are missing');
+
   console.log(
     'PASS GA4-VALIDATION-001: ownership, request context, exact schema, pagination, typed rows, and truthful NO_DATA semantics fail closed',
   );
