@@ -9,6 +9,8 @@ export default defineConfig({
       // production dependency for runtime resolution.
       external: [
         'playwright',
+        // Forge's builtinModules-derived list omits prefix-only built-ins.
+        'node:sqlite',
       ],
     },
   },

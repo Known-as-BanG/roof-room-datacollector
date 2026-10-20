@@ -4,7 +4,10 @@ const assert = require(
 const path = require(
   'node:path',
 );
+const fs = require('node:fs/promises');
+const os = require('node:os');
 const {
+  build,
   loadConfigFromFile,
 } = require(
   'vite',
@@ -46,12 +49,26 @@ const main = async () => {
       ?.rollupOptions
       ?.external;
 
-  assert.deepEqual(
-    external,
-    [
-      'playwright',
-    ],
-  );
+  assert.ok(external.includes('playwright'));
+
+  const { getConfig } = require(path.join(projectRoot,
+    'node_modules/@electron-forge/plugin-vite/dist/config/vite.main.config.js'));
+  const entry = path.join(projectRoot, 'src/main/storage/database.ts');
+  const mainConfig = getConfig({ root: projectRoot, mode: 'production', command: 'build',
+    forgeConfig: { renderer: [] }, forgeConfigSelf: { entry } }, loaded.config);
+  const temporaryRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'roofroom-sqlite-bundle-'));
+  try {
+    const result = await build({ ...mainConfig, configFile: false, logLevel: 'silent',
+      build: { ...mainConfig.build, outDir: temporaryRoot,
+        lib: { entry, formats: ['cjs'], fileName: () => 'sqlite-runtime.cjs' } } });
+    const output = (Array.isArray(result) ? result[0] : result).output;
+    const chunk = output.find((item) => item.type === 'chunk' && item.isEntry);
+    assert.ok(chunk.imports.includes('node:sqlite'));
+    assert.ok(!chunk.code.includes('__vite-browser-external'));
+    console.log('PASS GT-PACKAGE-004: actual Forge main build keeps node:sqlite external for Node/Electron runtime resolution');
+  } finally {
+    await fs.rm(temporaryRoot, { recursive: true, force: true });
+  }
 
   const forgeConfig =
     await loadConfigFromFile(
