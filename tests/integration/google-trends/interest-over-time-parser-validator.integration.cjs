@@ -1110,6 +1110,76 @@ const main = () => {
   console.log(
     'PASS GT-VAL-010: all-missing relative-interest evidence remains null and LOW_DATA without being mislabeled as all-zero or NO_DATA',
   );
+
+
+  // Sanitized fixture variant: only the two observed provider labels change.
+  const turkishBytes = Buffer.from(fixtureBytes.toString('utf8')
+    .replace('Category: All categories', 'Kategori: Tüm kategoriler')
+    .replace('\nWeek,', '\nHafta,'));
+  const turkishBefore = Buffer.from(turkishBytes);
+  const turkishParsed = parseGoogleTrendsInterestOverTimeCsv(turkishBytes);
+  assert.equal(turkishParsed.category_label, 'Tüm kategoriler');
+  assert.equal(turkishParsed.temporal_dimension, 'Week');
+  assert.equal(turkishParsed.rows.length, 105);
+  assert.deepEqual(turkishParsed.series.map((series) => series.query), EXPECTED_QUERIES);
+  assert.ok(turkishParsed.series.every((series) => series.geography_label === 'Türkiye'));
+
+  const expectedNativeRows = fixtureBytes.toString('utf8').trimEnd().split('\n')
+    .slice(3).map((line) => {
+      const [date, ...values] = line.split(',');
+      return [date, ...values.map(Number)];
+    });
+  assert.deepEqual(turkishParsed.rows.map((row) => [row.period_start,
+    ...row.values.map((value) => value.relative_interest)]), expectedNativeRows);
+  const turkishValues = turkishParsed.rows.flatMap((row) => row.values);
+  assert.equal(turkishValues.length, 525);
+  assert.equal(turkishValues.filter((value) => value.relative_interest === 0).length, 423);
+  assert.equal(turkishValues.filter((value) => value.relative_interest === null).length, 0);
+
+  const turkishDecision = validate(turkishBytes);
+  assert.equal(turkishDecision.validation_status, 'VALID');
+  const categoryFinding = turkishDecision.findings.find((entry) => entry.check_id === 'GT_CATEGORY');
+  assert.equal(categoryFinding.expected, 'All categories');
+  assert.equal(categoryFinding.actual, 'Tüm kategoriler');
+  assert.equal(categoryFinding.passed, true);
+  assert.deepEqual(turkishBytes, turkishBefore);
+  assert.equal(sha256(fixtureBytes), EXPECTED_SHA256);
+  console.log('PASS GT-TR-001: observed Turkish weekly labels preserve native category, all 525 values/423 zeros and raw bytes');
+
+  for (const [from, to] of [
+    ['Kategori:', 'Catégorie:'],
+    ['Hafta,', 'Gün,'],
+    ['Hafta,', 'Semana,'],
+  ]) {
+    const unsupported = Buffer.from(turkishBytes.toString('utf8').replace(from, to));
+    assert.throws(() => parseGoogleTrendsInterestOverTimeCsv(unsupported), GoogleTrendsCsvParseError);
+    assert.equal(validate(unsupported).validation_status, 'INVALID_SCHEMA');
+  }
+  assert.equal(validate(turkishBytes, { expected_category_label: 'Plants' }).validation_status, 'INVALID_SCHEMA');
+  for (const category of ['Bitkiler', 'Tüm Kategoriler']) {
+    const otherCategory = Buffer.from(turkishBytes.toString('utf8').replace('Tüm kategoriler', category));
+    assert.equal(parseGoogleTrendsInterestOverTimeCsv(otherCategory).category_label, category);
+    const result = validate(otherCategory);
+    assert.equal(result.validation_status, 'INVALID_SCHEMA');
+    assert.equal(result.findings.find((entry) => entry.check_id === 'GT_CATEGORY').actual, category);
+  }
+  console.log('PASS GT-TR-002: unknown locale/schema labels and unverified categories are rejected without translation or inference');
+
+  const wrongTurkishGeography = Buffer.from(turkishBytes.toString('utf8').replaceAll('(Türkiye)', '(TR)'));
+  const wrongTurkishGeographyDecision = validate(wrongTurkishGeography);
+  assert.equal(wrongTurkishGeographyDecision.validation_status, 'INVALID_SCHEMA');
+  assert.equal(wrongTurkishGeographyDecision.validated_metadata.country_name, null);
+  assert.equal(validate(turkishBytes, { expected_queries: ['unobserved query'] }).validation_status, 'QUERY_MISMATCH');
+  assert.equal(validate(turkishBytes, { requested_date_start: '2024-08-25' }).validation_status, 'DATE_MISMATCH');
+  const outOfRangeTurkish = Buffer.from(turkishBytes.toString('utf8').replace('2024-08-18,30,0,0,0,0', '2024-08-18,101,0,0,0,0'));
+  assert.equal(validate(outOfRangeTurkish).validation_status, 'INVALID_SCHEMA');
+  const missingTurkishValue = Buffer.from(turkishBytes.toString('utf8').replace('2024-08-18,30,0,0,0,0', '2024-08-18,30,,0,0,0'));
+  const missingTurkishParsed = parseGoogleTrendsInterestOverTimeCsv(missingTurkishValue);
+  assert.equal(missingTurkishParsed.rows[0].values[1].relative_interest, null);
+  assert.equal(missingTurkishParsed.rows[0].values[2].relative_interest, 0);
+  assert.equal(validate(missingTurkishValue).validation_status, 'VALID');
+  assert.deepEqual(turkishBytes, turkishBefore);
+  console.log('PASS GT-TR-003: Turkish scope/date/range mismatches remain visible and missing stays null, distinct from literal zero');
 };
 
 main();

@@ -743,7 +743,11 @@ export const validateGoogleTrendsInterestOverTimeCsv = (
   ) {
     const categoryMatches =
       parsed.category_label ===
-      input.expected_category_label;
+        input.expected_category_label ||
+      (
+        input.expected_category_label === 'All categories' &&
+        parsed.category_label === 'Tüm kategoriler'
+      );
 
     schemaMismatch ||= !categoryMatches;
 
@@ -752,7 +756,7 @@ export const validateGoogleTrendsInterestOverTimeCsv = (
         'GT_CATEGORY',
         categoryMatches,
         categoryMatches
-          ? 'Provider category preamble matches the expected observed label.'
+          ? 'Provider category preamble matches the expected category scope.'
           : 'Provider category preamble does not match the expected observed label.',
         input.expected_category_label,
         parsed.category_label,

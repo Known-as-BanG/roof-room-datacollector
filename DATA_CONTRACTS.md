@@ -335,6 +335,13 @@ Comparison-group context remains part of identity/meaning.
 
 Do not convert it to absolute search counts.
 
+The Interest Over Time CSV parser recognizes the observed `Category:` and Turkish
+`Kategori:` preambles and maps the observed weekly `Hafta` header to internal `Week`.
+It preserves the provider's category text and raw bytes. Source validation accepts
+exact `Tüm kategoriler` as the verified Turkish equivalent of requested All Categories
+(`All categories` provider label); geography/query/date/value checks remain strict.
+Unknown preamble or temporal labels and unverified category equivalents fail closed.
+
 ### Google Search Console
 
 Keep `QUERY` and `QUERY_PAGE` contracts distinct.

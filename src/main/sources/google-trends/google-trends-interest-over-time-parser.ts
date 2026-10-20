@@ -218,7 +218,7 @@ const parseCategoryLabel = (
   }
 
   const match =
-    /^Category:\s*(.+)$/u.exec(
+    /^(?:Category|Kategori):\s*(.+)$/u.exec(
       row[0].trim(),
     );
 
@@ -226,7 +226,7 @@ const parseCategoryLabel = (
     throw new GoogleTrendsCsvParseError(
       'GEN_REQUIRED_COLUMNS',
       'Google Trends category preamble is missing.',
-      'Category: <label>',
+      'Category: <label> or Kategori: <label>',
       row[0],
     );
   }
@@ -429,8 +429,13 @@ export const parseGoogleTrendsInterestOverTimeCsv = (
 
   cursor += 1;
 
-  const temporalDimension =
+  const observedTemporalDimension =
     header[0]?.trim();
+
+  const temporalDimension =
+    observedTemporalDimension === 'Hafta'
+      ? 'Week'
+      : observedTemporalDimension;
 
   if (
     header.length < 2 ||
@@ -442,8 +447,8 @@ export const parseGoogleTrendsInterestOverTimeCsv = (
     throw new GoogleTrendsCsvParseError(
       'GT_TEMPORAL_DIMENSION',
       'Google Trends Interest Over Time header must start with an observed supported temporal dimension.',
-      'Day or Week',
-      temporalDimension ?? null,
+      'Day, Week or Hafta',
+      observedTemporalDimension ?? null,
     );
   }
 

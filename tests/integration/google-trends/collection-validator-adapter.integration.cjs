@@ -93,8 +93,6 @@ const createRun = (
     selected_sources: [
       'google-trends',
     ],
-    requested_configuration:
-      requested,
     configuration_snapshot: {
       ...requested,
       config_version: 1,
@@ -348,6 +346,26 @@ const main = async () => {
     );
 
   try {
+    const turkishPath = path.join(temporaryRoot, 'turkish-weekly.csv');
+    const turkishBytes = Buffer.from((await fsp.readFile(fixturePath, 'utf8'))
+      .replace('Category: All categories', 'Kategori: Tüm kategoriler')
+      .replace('\nWeek,', '\nHafta,'));
+    await fsp.writeFile(turkishPath, turkishBytes);
+    const turkish = await validator.validate(createContext(turkishPath, {
+      artifact: { byte_size: turkishBytes.length },
+    }));
+    assert.equal(turkish.validation_status, 'VALID');
+    assert.deepEqual(turkish.validated_metadata, valid.validated_metadata);
+    const category = turkish.findings.find((entry) => entry.check_id === 'GT_CATEGORY');
+    assert.equal(category.passed, true);
+    assert.equal(category.expected, 'All categories');
+    assert.equal(category.actual, 'Tüm kategoriler');
+    const geography = turkish.findings.find((entry) => entry.check_id === 'GT_GEOGRAPHY');
+    assert.equal(geography.passed, true);
+    assert.deepEqual(geography.actual, ['Türkiye']);
+    assert.deepEqual(await fsp.readFile(turkishPath), turkishBytes);
+    console.log('PASS GT-ADAPTER-008: production validator accepts observed Turkish All Categories scope and preserves the raw file');
+
     const htmlPath =
       path.join(
         temporaryRoot,
