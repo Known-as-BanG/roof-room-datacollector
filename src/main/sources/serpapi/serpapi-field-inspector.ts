@@ -6,10 +6,8 @@ export class SerpApiContextError extends Error {
   constructor() { super('SERP evidence requires its accepted THIRD_PARTY_API context.'); }
 }
 
-// Preserve the remaining scope blockers; capture/freshness use evidence checks.
+// The parser enforces organic ranks and the approved search profile; query coverage remains open.
 export const SERP_SNAPSHOT_OPEN_REQUIREMENTS = {
-  position_semantics: 'Provider organic position is not absolute SERP rank; PAA has no normalized rank or title and paid/other features remain raw only.',
-  search_context: 'Query is a request dimension verified against provider q; Blog query meaning and required TR/tr/desktop/google/first-ten context are unapproved.',
   query_coverage: 'The required Blog query set and per-Job coverage policy are unspecified.',
 } as const;
 

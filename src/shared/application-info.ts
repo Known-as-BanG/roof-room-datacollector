@@ -1,4 +1,5 @@
 import type { BootstrapStatus } from './bootstrap-status';
+import type { DesktopDataPackageExportResult } from './data-package';
 import type {
   DesktopCollectionState,
 } from './collection-control';
@@ -193,7 +194,7 @@ export interface RoofRoomApi {
     run_id: string;
     job_id: string;
   }) => Promise<void>;
-  exportDesktopRun: (input: { run_id: string; mode: 'ALL' | 'SUCCESSFUL_ONLY' }) => Promise<{ export_directory: string; dataset_count: number; failed_count: number }>;
+  exportDesktopRun: (input: { run_id: string; mode: 'ALL' | 'SUCCESSFUL_ONLY' }) => Promise<DesktopDataPackageExportResult>;
   selectDesktopInputFile: (
     input: DesktopInputFileSelectionRequest,
   ) => Promise<DesktopInputFileSelectionResult>;

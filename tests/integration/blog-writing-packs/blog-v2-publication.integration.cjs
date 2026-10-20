@@ -3,7 +3,7 @@ const { test } = require('node:test');
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
-const { fixture, families, syntheticRequirements } = require('./blog-v2-readiness-fixture.cjs');
+const { fixture, families, syntheticRequirements, BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS } = require('./blog-v2-readiness-fixture.cjs');
 const load = (name) => require(path.join(process.argv[2], name));
 const publisherFile = path.join(process.argv[2], 'main/blog-writing-packs/blog-writing-pack-v2-publisher.js');
 const { publishBlogWritingPackV2 } = fs.existsSync(publisherFile) ? require(publisherFile) : {};
@@ -208,7 +208,8 @@ test('collected account observations survive native validation, accepted loading
   assert.deepEqual(Buffer.from(loaded.bytes), original);
   assert.equal(draft.selected_evidence[0].requested_context.customer_id, '123');
   assert.equal(Object.hasOwn(draft.selected_evidence[0].requested_context, 'time_zone'), false);
-  const requirements = syntheticRequirements(); requirements.ads_requested_dates = { start_date: '2026-09-08', end_date: '2026-10-07' };
+  const requirements = structuredClone(BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS);
+  requirements.ads_requested_dates = { start_date: '2026-09-08', end_date: '2026-10-07' };
   const result = await f.evaluate(requirements, at, 'PUBLICATION');
   assert.equal(result.datasets[0].coverage_status, 'SATISFIED');
   const observed = result.field_checks[0].publication_time_context;

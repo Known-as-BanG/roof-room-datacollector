@@ -1,3 +1,5 @@
+import './main/app/packaged-qa-startup';
+
 import {
   app,
   BrowserWindow,
@@ -1241,10 +1243,10 @@ const initializeBootstrapStatus =
           package_directory:
             directories.runs,
 
-          load_datasets:
+          load_export:
             (run_id) =>
               productionDataPackageLoader
-                .loadRunDatasets(run_id),
+                .loadRunExport(run_id),
 
           open_accepted_artifact:
             async (artifact) => {

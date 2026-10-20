@@ -1,5 +1,20 @@
 export type DataPackageMode = 'ALL' | 'SUCCESSFUL_ONLY';
 
+export interface DesktopDataPackageExportResult {
+  export_directory: string;
+  /** Compatibility alias for the optional normalized dataset file count. */
+  dataset_count: number;
+  failed_count: number;
+  /** Absent on legacy exporters that cannot report raw evidence. */
+  raw_file_count?: number;
+  normalized_file_count?: number;
+  unavailable_evidence_count?: number;
+  normalization_unavailable_count?: number;
+  no_data_file_count?: number;
+  low_data_file_count?: number;
+  collection_status?: 'COMPLETE' | 'COMPLETE_WITH_WARNINGS' | 'INCOMPLETE';
+}
+
 export interface DataPackageDataset {
   source_id: string;
   dataset_type: string;

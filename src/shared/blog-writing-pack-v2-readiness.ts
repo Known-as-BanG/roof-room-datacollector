@@ -32,14 +32,14 @@ export interface BlogWritingPackV2Requirements {
   readonly ga4_requested_dates?: { readonly start_date: string; readonly end_date: string } | null;
 }
 
-// Explicit conservative input for the current real contract; no period/metric defaults.
+// Approved durations stay separate from per-evidence calendar and scope checks.
 export const BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS: BlogWritingPackV2Requirements = {
   requirements_version: 1,
   recipe_version: 2,
   datasets: {
-    SEARCH_TERMS: { open_decisions: ['reporting_window'], required_source_changes: [] },
+    SEARCH_TERMS: { open_decisions: [], required_source_changes: [] },
     QUERY_PAGE: { open_decisions: [], required_source_changes: [] },
-    KEYWORD_HISTORICAL_METRICS: { open_decisions: ['historical_scope'], required_source_changes: [] },
+    KEYWORD_HISTORICAL_METRICS: { open_decisions: [], required_source_changes: [] },
     PRODUCTS: { open_decisions: ['category', 'price', 'availability', 'freshness'], required_source_changes: ['stock_status', 'product_status', 'currency_context'] },
     SITEMAP_URLS: { open_decisions: ['scope', 'freshness'], required_source_changes: ['page_type', 'title', 'status'] },
     GOOGLE_SERP: { open_decisions: [], required_source_changes: [] },

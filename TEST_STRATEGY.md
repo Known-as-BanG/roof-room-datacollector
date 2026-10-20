@@ -328,3 +328,43 @@ No live provider request belongs inside the ordinary deterministic release gate.
 ## 17. Governing test rule
 
 > **Prove the changed boundary with the minimum sufficient deterministic evidence; use live providers only for explicit proof that cannot be established locally.**
+
+## 18. Manual isolated packaged QA
+
+Packaged QA is explicit and separate from routine deterministic/release gates.
+First run `bash tests/integration/app/run-packaged-qa-isolation-test.sh` and the
+directly affected regressions. Before `npm run package -- --platform=darwin --arch=arm64`,
+check that its output target does not overwrite an existing build and preserve any
+existing generated `.vite` files. Keep the approved local ad-hoc signing settings;
+do not use make, publish, Developer ID signing or notarization for this check.
+
+Independently inspect the actual packaged `app.asar` startup order: QA isolation
+must execute before application bootstrap. Only after verifying that boundary,
+record a private `packaged-qa-build.json` alongside the `.app`, containing
+`schema_version: 1`, the canonical `executable` path, `executable_sha256`,
+`asar_sha256` and `verified_isolation_entry: true`. This is a review receipt for
+that exact build, never an automatic launch-time stamp. Rebuilt/replaced packages
+need fresh verification; missing or mismatched receipts must reject before spawn.
+
+`bash scripts/qa/run-packaged-qa.sh` launches only the expected local macOS output
+executable after receipt validation. It explicitly creates a private canonical
+temporary root with a marker/token; the early packaged main hook validates the
+contract before assigning appData, userData, sessionData/cache, temp, logs, crashes
+and downloads. Database, credentials, browser profiles and general export derive
+from isolated userData. Invalid/partial/conflicting QA settings fail closed, and
+ordinary launches do no QA filesystem/path work. No HOME override establishes
+isolation. Effective path diagnostics stay inside the disposable root without tokens.
+
+`bash tests/integration/app/run-packaged-raw-export-acceptance.sh` is an explicit
+manual acceptance command requiring that reviewed local build. It prepares the
+existing mocked XML/API JSON/XLSX and NO_DATA/LOW_DATA fixtures through native
+validation/persistence in disposable state, then uses the real packaged renderer,
+preload IPC, loader and filesystem exporter. Preparation in compiled Node code
+does not establish packaged provider acquisition. No live collection, OAuth or
+real credential workflow is permitted. The QA default-session network guard is
+additional protection; it does not intercept Node fetch or Playwright.
+
+Keep runtime/export receipts, raw evidence and screenshots in the disposable root
+for review. Only launcher-owned QA processes may be stopped. General export has no
+dedicated open/reveal action; do not claim those interactions from another flow.
+Packaged synthetic delivery never establishes live-provider or release acceptance.

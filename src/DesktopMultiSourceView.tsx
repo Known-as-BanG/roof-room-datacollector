@@ -6312,16 +6312,29 @@ export function DesktopMultiSourceView() {
 
                 {exportResult !== null
                   && (
-                    <div>
+                    <div role="status" aria-live="polite">
+                      <p>Export completed</p>
+                      <p><strong>{exportResult.raw_file_count === undefined
+                        ? 'Raw evidence file count unavailable for this export'
+                        : `Raw evidence files: ${exportResult.raw_file_count}`}</strong></p>
+                      <p>Normalized dataset files: {exportResult.normalized_file_count ?? exportResult.dataset_count}</p>
                       <p>
-                        {exportResult.export_directory}
+                        Failed or cancelled jobs: {exportResult.failed_count}
+                        {exportResult.unavailable_evidence_count !== undefined
+                          && ` · Jobs without raw evidence: ${exportResult.unavailable_evidence_count}`}
                       </p>
-
-                      <p>
-                        Datasets: {exportResult.dataset_count}
-                        {' · Failures: '}
-                        {exportResult.failed_count}
-                      </p>
+                      {(exportResult.normalization_unavailable_count ?? 0) > 0
+                        && <p>Normalized representations unavailable: {exportResult.normalization_unavailable_count}</p>}
+                      {((exportResult.no_data_file_count ?? 0) + (exportResult.low_data_file_count ?? 0)) > 0
+                        && <p>Accepted NO_DATA files: {exportResult.no_data_file_count ?? 0} · Accepted LOW_DATA files: {exportResult.low_data_file_count ?? 0}</p>}
+                      <p>{exportResult.collection_status === 'INCOMPLETE'
+                        ? 'Collection incomplete'
+                        : exportResult.collection_status === 'COMPLETE_WITH_WARNINGS'
+                          ? 'Collection completed with warnings'
+                          : exportResult.collection_status === 'COMPLETE'
+                            ? 'Collection complete'
+                            : 'Collection status unavailable for this export'}</p>
+                      <p>Export destination: <code>{exportResult.export_directory}</code></p>
                     </div>
                   )}
               </section>

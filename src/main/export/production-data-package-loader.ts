@@ -2,11 +2,15 @@ import type { GscDateCoverageProvenance } from '../../shared/blog-writing-pack-v
 import { parseGscDateCoverage } from '../sources/google-search-console/gsc-date-coverage';
 import { createHash } from 'node:crypto';
 import { lstat, readFile } from 'node:fs/promises';
+import * as path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 
 import type { ArtifactRecord } from '../../shared/artifact';
 import type { JobRecord, RunRecord } from '../../shared/run-job';
-import type { DataPackageInputDataset } from './data-package-exporter';
+import { safeDataPackageContext, type DataPackageInputDataset, type DataPackageRawEvidence } from './data-package-exporter';
+import type { AttemptRecord } from '../../shared/attempt';
+import type { ValidationSummaryRecord } from '../../shared/validation-summary';
+import { isTerminalRunStatus } from '../core/run-execution-state-machine';
 import type { StorageManager } from '../storage/storage-manager';
 import { createAttemptDocumentFilename } from '../storage/storage-manager';
 import type { SerpApiAcquisitionProvenance } from '../../shared/serpapi';
@@ -40,6 +44,8 @@ export interface ProductionDataPackageRepository {
   getRun(run_id: string): RunRecord | null;
   listJobs(run_id: string): JobRecord[];
   getArtifact(artifact_id: string): ArtifactRecord | null;
+  listAttempts?(job_id: string): AttemptRecord[];
+  getValidationSummary?(validation_id: string): ValidationSummaryRecord | null;
 }
 
 const asObject = (value: unknown, context: string): Record<string, unknown> => {
@@ -88,6 +94,95 @@ export class ProductionDataPackageLoader {
     private readonly repository: ProductionDataPackageRepository,
     private readonly storage: Pick<StorageManager, 'resolveRunRelativePath'>,
   ) {}
+
+  async loadRunExport(run_id: string): Promise<{ datasets: DataPackageInputDataset[]; raw: DataPackageRawEvidence }> {
+    const run = this.repository.getRun(run_id);
+    if (!run || !isTerminalRunStatus(run.run_status)) throw new Error('General export requires a known terminal Run.');
+    if (!this.repository.listAttempts || !this.repository.getValidationSummary) throw new Error('Raw export requires persisted Attempt and Validation provenance.');
+    const datasets: DataPackageInputDataset[] = [];
+    const raw: DataPackageRawEvidence = { files: [], jobs: [] };
+    for (const job of this.repository.listJobs(run_id)) {
+      if (job.run_id !== run_id || !run.selected_sources.includes(job.source_id)) throw new Error('Raw export Job ownership is inconsistent.');
+      const attempts = this.repository.listAttempts(job.job_id);
+      raw.jobs.push({ job_id: job.job_id, source_id: job.source_id, job_key: job.job_key,
+        execution_status: job.execution_status, validation_status: job.validation_status, accepted_artifact_id: job.accepted_artifact_id,
+        attempts: attempts.map(({ attempt_id, attempt_number, execution_status, candidate_artifact_id, validation_id, error_code }) => ({
+          attempt_id, attempt_number, execution_status, candidate_artifact_id, validation_id, error_code,
+        })) });
+      if (job.execution_status !== 'COMPLETED' || !ACCEPTED_VALIDATION.has(job.validation_status)) continue;
+      if (!job.accepted_artifact_id) throw new Error('Completed accepted Job is missing its raw artifact.');
+      await this.assertSafeExportArtifactPath(this.requireAcceptedArtifact(run, job));
+      const loaded = await this.readAcceptedJobArtifact(run_id, job.job_id);
+      const { artifact, bytes } = loaded;
+      const matching = attempts.filter((item) => item.attempt_number === artifact.attempt_number);
+      const attempt = matching[0];
+      const validation = attempt?.validation_id ? this.repository.getValidationSummary(attempt.validation_id) : null;
+      if (matching.length !== 1 || !attempt || attempt.job_id !== job.job_id || attempt.execution_status !== 'COMPLETED'
+        || attempt.candidate_artifact_id !== artifact.artifact_id || !validation
+        || validation.validation_id !== attempt.validation_id || validation.run_id !== run_id || validation.job_id !== job.job_id || validation.artifact_id !== artifact.artifact_id
+        || validation.validation_status !== job.validation_status) throw new Error('Raw export Attempt/Validation identity is inconsistent.');
+      const metadata = await this.readExportAcquisition(job, artifact, attempt);
+      let parsed: ReturnType<ProductionDataPackageLoader['parseDataset']> | undefined;
+      try { parsed = this.parseDataset(job, artifact, bytes); } catch {
+        // Raw acceptance and byte integrity do not depend on an optional row adapter.
+      }
+      const declaredType = job.source_context?.dataset_type;
+      if (parsed && typeof declaredType === 'string' && parsed.dataset_type !== declaredType) throw new Error('Raw export dataset identity is inconsistent.');
+      if (parsed) datasets.push({ source_id: job.source_id, dataset_type: parsed.dataset_type,
+        job_id: job.job_id, job_key: job.job_key, rows: parsed.rows,
+        provenance: { run_id, workspace_id: run.workspace_id, job_id: job.job_id, job_key: job.job_key, source_id: job.source_id,
+          attempt_id: attempt.attempt_id, attempt_number: artifact.attempt_number, validation_id: validation.validation_id,
+          validation_status: validation.validation_status, raw_artifact_id: artifact.artifact_id,
+          raw_artifact_filename: artifact.filename, raw_artifact_media_type: artifact.media_type,
+          raw_artifact_byte_size: artifact.byte_size, raw_artifact_sha256: artifact.sha256,
+          acquired_at: artifact.created_at, requested_context: safeDataPackageContext(job.source_context),
+          ...(job.source_id === GOOGLE_ADS_SEARCH_REPORTING_SOURCE_ID ? { snapshot_observed_at: artifact.created_at } : {}),
+        } });
+      raw.files.push({ bytes, run_id, workspace_id: run.workspace_id, source_id: job.source_id,
+        dataset_type: typeof declaredType === 'string' ? declaredType : parsed?.dataset_type ?? null,
+        job_id: job.job_id, job_key: job.job_key, attempt_id: attempt.attempt_id, attempt_number: artifact.attempt_number,
+        artifact_id: artifact.artifact_id, validation_id: validation.validation_id, validation_status: validation.validation_status,
+        filename: artifact.filename, media_type: artifact.media_type, byte_size: artifact.byte_size, sha256: artifact.sha256!,
+        acquired_at: artifact.created_at, requested_context: safeDataPackageContext(job.source_context),
+        acquisition_context: metadata.context, acquisition_metadata_sha256: metadata.sha256,
+        normalization_status: parsed ? 'AVAILABLE' : 'UNAVAILABLE',
+      });
+    }
+    return { datasets, raw };
+  }
+
+  private async assertSafeExportArtifactPath(artifact: ArtifactRecord): Promise<void> {
+    const root = this.storage.resolveRunRelativePath(artifact.run_id, '.');
+    const filename = this.storage.resolveRunRelativePath(artifact.run_id, artifact.relative_path);
+    const relative = path.relative(root, filename);
+    let current = root;
+    for (const segment of ['', ...relative.split(path.sep)]) {
+      current = path.join(current, segment);
+      if ((await lstat(current)).isSymbolicLink()) throw new Error('Raw export path contains a symbolic link.');
+    }
+  }
+
+  private async readExportAcquisition(job: JobRecord, artifact: ArtifactRecord, attempt: AttemptRecord): Promise<{ context: unknown; sha256: string | null }> {
+    const relative = `${job.source_id}/metadata/${createAttemptDocumentFilename(job.job_key, artifact.attempt_number, 'metadata')}`;
+    const filename = this.storage.resolveRunRelativePath(job.run_id, relative);
+    let bytes: Uint8Array;
+    try {
+      await this.assertSafeExportArtifactPath({ ...artifact, relative_path: relative });
+      if (!(await lstat(filename)).isFile()) throw new Error('Export acquisition metadata is not a regular file.');
+      bytes = new Uint8Array(await readFile(filename));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { context: null, sha256: null };
+      throw error;
+    }
+    const metadata = asObject(decodeJson(bytes, 'Export acquisition metadata'), 'Export acquisition metadata');
+    if (![1, 2].includes(metadata.schema_version as number) || metadata.run_id !== job.run_id || metadata.job_id !== job.job_id
+      || metadata.source_id !== job.source_id || metadata.attempt_number !== attempt.attempt_number
+      || metadata.raw_artifact_id !== artifact.artifact_id || metadata.raw_relative_path !== artifact.relative_path
+      || metadata.validation_status !== job.validation_status
+      || metadata.schema_version === 2 && (metadata.attempt_id !== attempt.attempt_id || metadata.job_key !== job.job_key
+        || !isDeepStrictEqual(metadata.source_context, job.source_context))) throw new Error('Export acquisition metadata identity is inconsistent.');
+    return { context: safeDataPackageContext(metadata.acquisition_metadata ?? null), sha256: createHash('sha256').update(bytes).digest('hex') };
+  }
 
   async loadRunDatasets(run_id: string): Promise<DataPackageInputDataset[]> {
     const run = this.repository.getRun(run_id);

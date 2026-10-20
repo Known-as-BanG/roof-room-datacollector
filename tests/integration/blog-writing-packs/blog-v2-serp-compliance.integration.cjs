@@ -86,7 +86,10 @@ test('F: paid/feature data never enters organic ranks; PAA rows retain their own
   assert.deepEqual(inspected.rows.map((r)=>[r.result_type,r.position,r.title]),[['ORGANIC',3,'Synthetic observed title'],['PAA',null,null]]);
   assert.equal(field(inspected,'position').absent_count,1);
   assert.equal(field(inspected,'title').absent_count,1);
-  assert.ok(has((await evaluate(body)).result,'DECISION_REQUIRED','position_semantics'));
+  const { result } = await evaluate(body);
+  assert.equal(has(result,'DECISION_REQUIRED','position_semantics'),false);
+  assert.ok(has(result,'FIELD_ABSENT','position'));
+  assert.ok(has(result,'FIELD_ABSENT','title'));
 });
 
 test('G/M: absent, null, blank and observed URL/title remain distinct and required missing observations block', async () => {
@@ -123,7 +126,8 @@ test('H/I: domain uses only existing observed-link hostname mapping; missing/inv
 
 test('J: clearing decisions cannot bypass remaining scope decisions or missing acquisition evidence', async () => {
   const { result }=await evaluate();
-  for(const id of ['query_coverage','position_semantics','search_context']) assert.ok(has(result,'DECISION_REQUIRED',id),id);
+  assert.ok(has(result,'DECISION_REQUIRED','query_coverage'));
+  for(const id of ['position_semantics','search_context']) assert.equal(has(result,'DECISION_REQUIRED',id),false,id);
   assert.ok(has(result,'FIELD_OBSERVATION_REQUIRED','serp_acquisition'));
   assert.equal(result.datasets[5].coverage_status,'BLOCKED');
   assert.equal(result.coverage_scope,'EXPLICIT_REQUIREMENTS_ONLY');

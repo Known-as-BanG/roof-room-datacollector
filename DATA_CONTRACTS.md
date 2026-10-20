@@ -647,6 +647,60 @@ Indexes accepted source datasets separately and preserves exact Run/Job/source/a
 
 No cross-source row join is implied.
 
+The primary general Collector export delivers collected provider evidence. It is
+independent of specialized Blog v2 field meanings, mandatory source families,
+marketing periods and analytical coverage. Historical approved Blog requirements
+remain authoritative for Blog packages; they do not govern this general export.
+
+The general desktop path adds `raw/` and `RAW_EVIDENCE.json` (schema version 1)
+alongside the existing `MANIFEST.json`, `FAILURES.json`, `DATASETS.json`, normalized
+dataset JSON and applicable Keyword Planner companion files. Existing normalized
+and specialized package writer contracts are unchanged. Raw files copy the exact
+accepted Artifact bytes, retaining the recorded native filename/extension and
+media type; no response is regenerated from normalized rows.
+
+Each raw index entry records a safe package-relative path, actual byte size and
+SHA-256, Workspace/Run/Source/Dataset/Job/Attempt/Artifact/Validation identities,
+accepted validation status and artifact acquisition time. Dataset identity comes
+from frozen source context or the existing native normalizer; unavailable identity
+stays null. Requested and existing acquisition contexts are sanitized collector
+metadata, separate from raw response bytes. Existing observed receipt timestamps
+are preserved when present; artifact acquisition time never supplies a missing
+response receipt. The original Attempt metadata hash is recorded when available,
+but sanitized context is not claimed to be a byte-exact metadata-file copy.
+Credentials, authorization/cookies/session secrets and unrestricted import paths
+are excluded from exported context; analytics `session_filter` is retained.
+
+Only completed Jobs with actual VALID/LOW_DATA/NO_DATA accepted raw artifacts and
+matching persisted completed Attempt/Validation associations can produce raw
+files. Existing metadata, when present, must bind that same evidence. Missing
+legacy acquisition context stays null. Corrupt, missing, unaccepted or mismatched
+raw evidence fails the export. Missing optional normalization instead records
+`normalization_status: UNAVAILABLE` and omits normalized rows without inventing
+them. The index separately records every Job's execution/validation outcome and
+Attempt identities/error codes, including failures and unfinished/cancelled work;
+no missing raw file or zero row is manufactured. `SUCCESSFUL_ONLY` keeps its
+existing normalized failure-list behavior; the raw index retains actual outcomes.
+
+The desktop export result reports delivered raw file count first, with optional
+normalized dataset file count separately (`dataset_count` remains its compatibility
+alias). Failed/cancelled Job and unavailable raw evidence counts reflect the whole
+Run in both export modes. Missing optional normalization never counts as missing
+raw evidence. Accepted `NO_DATA` and `LOW_DATA` files remain actual delivered files
+and are counted separately. Successful filesystem publication is distinct from
+collection completeness: a terminal Run with unavailable evidence or a status other
+than completed/completed-with-warnings is incomplete; accepted empty/low-data or
+persisted completion warnings remain warnings. Legacy results without raw counts
+display their count as unavailable, rather than reporting a fabricated zero.
+
+General desktop export still requires a terminal Run. New raw companions are
+published through private staging, exclusive file creation, copy hash/size readback,
+reservation and rename. Unsafe paths/symlinks and existing output targets are
+rejected. Failure before commit removes staging; reservation cleanup failure after
+a verified commit does not falsely report export failure. Accepted files and
+Attempts are never modified. No source acquisition, Blog rule, migration or new
+package architecture is introduced by this additive path.
+
 ### `ADS_OPTIMIZATION_PACK v2`
 
 Active recipe version is 2 and requires exactly the six approved Google Ads SEARCH reporting datasets at dataset schema v2.
@@ -786,7 +840,7 @@ implementation/verification records rather than being rewritten as new acceptanc
 | Keyword Planner Slice 3B.2B.1: Blog historical duration unapproved and not inherited from acquisition/Ads Growth | Blog independently approves 12 completed months, with separately labeled provider-returned current-month evidence. Actual monthly coverage, keyword completeness and currency still require evidence. |
 | İkas Slice 3B.2B.2: category and Blog price meaning unresolved | All observed categories must survive; singular category has the uniqueness/provider-primary rule; Blog price is verified current sale price. Existing native columns/variant rows do not prove those meanings. No stock/lifecycle mapping is approved. |
 | Sitemap Slice 3B.2B.3: page evidence/rules require follow-up approval | Page evidence acquisition is now approved in principle; page-type mapping, controlled implementation and live execution remain unresolved or separately scoped. Sitemap fetch status still cannot satisfy page status. |
-| SERP Slice 3B.2B.4: capture_date, position_semantics, search_context and freshness always DECISION_REQUIRED | Acquisition-based capture, organic position, existing search profile and maximum 7-day age are approved. Follow-ups implement receipt provenance, derived capture_date and draft-time age checks. Other scope blockers remain; actual package-time enforcement is still absent. |
+| SERP Slice 3B.2B.4: capture_date, position_semantics, search_context and freshness always DECISION_REQUIRED | Acquisition-based capture, organic position, existing search profile and maximum 7-day age are approved. Existing request/parser checks enforce the profile and organic ranks; follow-ups enforce receipt provenance, derived capture_date and independent draft/publication freshness. Required-query coverage remains unresolved. |
 | GA4 source design `2026-10-03-google-analytics-4-source-design.md` §6: approximately 90-day Blog recommendation and locked activeUsers-based metric list | Blog v2 requires 28 completed property-timezone days and actual totalUsers plus the approved duration/session derivation. The older source metric list describes legacy Content v1; metric completion extends Content v2 while preserving Paid Funnel's metric schema. |
 | GA4 Slice 3B.2B.5: users/time/window unapproved; no duration calculation or null placeholder emitted | Those delivery meanings are approved. Follow-ups implement Content v2 metrics and property-timezone calendar checks at immutable draft creation. Legacy missing provenance/metric gaps remain explicit blockers. Historical evidence is not rewritten. |
 | GA4 Slice 3B.2B.5: content_coverage decision includes page/property/population scope | Preserve all returned rows and verified pagination; no top-N or invented pages. Legacy missing property context, cross-Job population compatibility and warning/placeholder compliance remain unresolved. |
@@ -1006,10 +1060,14 @@ decision lists cannot approve unresolved meanings, scope or source capabilities;
 absent families remain MISSING. Real Blog v2 COMPLETE coverage remains blocked
 on the explicit decisions and acquisition gaps documented below.
 
-`BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS` records the prior checkpoint's open
-decisions and source gaps, with no automatic date or metric defaults. It has not
-been updated to encode all 2026-10-17 approvals; GA4 users/time/window defaults are
-resolved, as are SERP capture/freshness defaults; actual compliance/legacy gaps are checked per artifact. Using it cannot
+`BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS` keeps open decisions and source gaps
+separate from approved durations. Ads `reporting_window` and Planner
+`historical_scope` are no longer blanket product-decision blockers: Ads publication
+checks the last 30 completed account-calendar days; Planner API context checks
+the twelve-month request shape, while calendar context, exact supplied scope,
+actual monthly observations, keyword coverage and currency remain independent
+blockers. No date, timezone or metric default is supplied. GA4 metric/window and
+SERP receipt/freshness checks remain per artifact. Using this profile cannot
 produce real COMPLETE coverage while those blockers remain. Blockers carry a
 dataset type, mandatory/optional designation, actual selection IDs, requirement,
 expected/actual safe condition, and next action. Supported codes are
@@ -1094,13 +1152,15 @@ are reconstructed. Duplicate provider rows and Jobs are never merged/deduplicate
 Optional `keyword_planner_scope` in the version-1 requirements profile specifies
 `requested_date_start`, `requested_date_end`, `country_code`, `language_code`,
 and `keyword_plan_network`, or null. Unknown keys/invalid or reversed dates are
-rejected. Dates have no Blog duration default. Missing scope stays
+rejected. Exact dates are never filled from the approved duration. Missing scope stays
 DECISION_REQUIRED even if family decision lists are empty; approved fields are
 compared exactly against each verified API Job's requested context, producing
 WINDOW_MISMATCH on disagreement. Open decision lists still require explicit
 resolution by the caller. The API context's existing 12-complete-month TR/tr/
-GOOGLE_SEARCH constraint validates acquisition compatibility only; it does not
-approve a Blog historical requirement or imply observed completeness.
+GOOGLE_SEARCH constraint checks the approved duration's request shape. It does
+not prove the latest completed months at publication, actual monthly observations,
+keyword completeness or currency. The separate publication calendar-context and
+monthly-observation checks remain; no host timezone or synthetic months are used.
 
 Missing/incompatible source request context produces EVIDENCE_INVALID
 (`keyword_planner_request_context`). Manual inspection validates sanitized source,
@@ -1287,12 +1347,15 @@ derived_count and DERIVED status. Unknown receipt never receives a fabricated
 date. Empty VALID/NO_DATA/LOW_DATA cannot establish fields, while warning verdict/
 coverage decisions remain separate.
 
-The current runtime retains DECISION_REQUIRED for position_semantics,
-search_context and query_coverage. Capture/freshness decisions are replaced by
-mandatory per-evidence checks below, regardless of empty caller decision lists.
-Source VALID alone cannot satisfy Blog
-SERP coverage. The exact required query set/completeness still needs an explicit
-selection decision; the approved meanings require implementation and verification.
+The current runtime retains DECISION_REQUIRED for query_coverage. The approved
+organic-position and Google/TR/tr/desktop/first-ten profile are already enforced
+by request-context validation and provider-response parsing, so position_semantics
+and search_context no longer create blanket decision blockers. Invalid ranks,
+mismatched query/profile, required missing fields and separate PAA limitations
+remain checked. Capture/freshness use mandatory per-evidence checks below,
+regardless of empty caller decision lists. Source VALID alone cannot satisfy Blog
+SERP coverage: the exact required query set/completeness still needs explicit
+selection and a coverage rule.
 Independent provider timestamps/domains, absolute ranks or additional result
 categories would require separately approved
 source capabilities if demanded; none are acquired or normalized in this slice.

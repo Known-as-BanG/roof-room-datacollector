@@ -28,8 +28,8 @@ import {
   formatLocalReferenceDate,
   resolveDesktopDatePolicy,
 } from '../../shared/desktop-run-resolution';
-import { buildDataPackage, writeDataPackage } from '../export/data-package-exporter';
-import type { DataPackage, DataPackageMode } from '../../shared/data-package';
+import { buildDataPackage, writeDataPackage, type DataPackageInputDataset, type DataPackageRawEvidence } from '../export/data-package-exporter';
+import type { DataPackage, DataPackageMode, DesktopDataPackageExportResult } from '../../shared/data-package';
 import type { WorkspaceFreshnessResult } from '../../shared/freshness';
 import type { ArtifactRecord } from '../../shared/artifact';
 import { ResumePlanner } from '../core/resume-planner';
@@ -151,6 +151,7 @@ cancel_active_run?: (
 ) => Promise<void>;
   package_directory?: string;
   load_datasets?: (run_id: string) => Promise<Parameters<typeof buildDataPackage>[0]['datasets']>;
+  load_export?: (run_id: string) => Promise<{ datasets: DataPackageInputDataset[]; raw: DataPackageRawEvidence }>;
   open_accepted_artifact?: (artifact: ArtifactRecord) => Promise<void>;
 }
 
@@ -2313,17 +2314,42 @@ export class DesktopMultiSourceController {
     return buildDataPackage({ run: state.run, jobs: state.jobs, datasets, mode });
   }
 
-  async exportRun(run_id: string, mode: DataPackageMode): Promise<{ export_directory: string; dataset_count: number; failed_count: number }> {
+  async exportRun(run_id: string, mode: DataPackageMode): Promise<DesktopDataPackageExportResult> {
     if (!this.dependencies.package_directory) throw new Error('Data Package export is unavailable.');
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(run_id) || !['ALL', 'SUCCESSFUL_ONLY'].includes(mode)) throw new Error('Unsafe Data Package export path or mode.');
     const run = this.dependencies.repository.getRun(run_id);
     if (run === null) throw new Error(`Unknown Run: ${run_id}`);
     if (!isTerminalRunStatus(run.run_status)) throw new Error(`Run ${run_id} is not terminal and cannot be exported.`);
-    if (!this.dependencies.load_datasets) throw new Error('Data Package dataset loading is unavailable.');
-    const datasets = await this.dependencies.load_datasets(run_id);
+    const loaded = this.dependencies.load_export ? await this.dependencies.load_export(run_id) : undefined;
+    if (!loaded && !this.dependencies.load_datasets) throw new Error('Data Package dataset loading is unavailable.');
+    const datasets = loaded?.datasets ?? await this.dependencies.load_datasets!(run_id);
     const dataPackage = this.buildPackage(run_id, mode, datasets);
     const directory = `${this.dependencies.package_directory}/${run_id}/exports/${mode.toLowerCase()}`;
-    await writeDataPackage(directory, dataPackage);
-    return { export_directory: directory, dataset_count: dataPackage.datasets.length, failed_count: dataPackage.failures.length };
+    await writeDataPackage(directory, dataPackage, loaded?.raw);
+    const result: DesktopDataPackageExportResult = {
+      export_directory: directory,
+      dataset_count: dataPackage.datasets.length,
+      failed_count: dataPackage.manifest.failed_jobs,
+    };
+    if (!loaded) return result;
+    const files = loaded.raw.files;
+    const unavailable = loaded.raw.jobs.length - files.length;
+    const noData = files.filter((file) => file.validation_status === 'NO_DATA').length;
+    const lowData = files.filter((file) => file.validation_status === 'LOW_DATA').length;
+    return {
+      ...result,
+      raw_file_count: files.length,
+      normalized_file_count: dataPackage.datasets.length,
+      unavailable_evidence_count: unavailable,
+      normalization_unavailable_count: files.filter((file) => file.normalization_status === 'UNAVAILABLE').length,
+      no_data_file_count: noData,
+      low_data_file_count: lowData,
+      collection_status: unavailable > 0 || !['COMPLETED', 'COMPLETED_WITH_WARNINGS'].includes(run.run_status)
+        ? 'INCOMPLETE'
+        : run.run_status === 'COMPLETED_WITH_WARNINGS' || noData > 0 || lowData > 0
+          ? 'COMPLETE_WITH_WARNINGS'
+          : 'COMPLETE',
+    };
   }
 
   private resolveMultiSourceExecutionConfiguration(

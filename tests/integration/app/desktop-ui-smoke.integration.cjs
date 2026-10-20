@@ -2630,14 +2630,11 @@ const main = async () => {
                 input.mode === 'ALL'
                   ? '/fixture/exports/all'
                   : '/fixture/exports/successful-only',
-              dataset_count:
-                input.mode === 'ALL'
-                  ? 1
-                  : 1,
-              failed_count:
-                input.mode === 'ALL'
-                  ? 1
-                  : 0,
+              ...(window.__desktopExportResultOverride ?? {
+                dataset_count: 0, raw_file_count: 1, normalized_file_count: 0,
+                failed_count: 1, unavailable_evidence_count: 1, normalization_unavailable_count: 1,
+                no_data_file_count: 0, low_data_file_count: 0, collection_status: 'INCOMPLETE',
+              }),
             };
           },
 
@@ -3937,14 +3934,19 @@ const main = async () => {
 
     assert.equal(
       await page.getByText(
-        'Datasets: 1 · Failures: 1',
+        'Raw evidence files: 1',
         {
           exact: true,
         },
       ).count(),
       1,
-      'Run Detail must expose export result counts.',
+      'Raw delivery must be visible when there are no normalized datasets.',
     );
+    await page.getByText('Export completed', { exact: true }).waitFor();
+    await page.getByText('Normalized dataset files: 0', { exact: true }).waitFor();
+    await page.getByText('Failed or cancelled jobs: 1 · Jobs without raw evidence: 1', { exact: true }).waitFor();
+    await page.getByText('Collection incomplete', { exact: true }).waitFor();
+    await page.getByText('Normalized representations unavailable: 1', { exact: true }).waitFor();
 
     await page.getByRole(
       'button',
@@ -3972,6 +3974,21 @@ const main = async () => {
       ],
       'Successful-only export must use the exact persisted Run identity and mode.',
     );
+    await page.getByText('Collection incomplete', { exact: true }).waitFor();
+    await page.getByText('Failed or cancelled jobs: 1 · Jobs without raw evidence: 1', { exact: true }).waitFor();
+    await page.evaluate(() => { window.__desktopExportResultOverride = {
+      dataset_count: 3, raw_file_count: 3, normalized_file_count: 3, failed_count: 0,
+      unavailable_evidence_count: 0, normalization_unavailable_count: 0,
+      no_data_file_count: 1, low_data_file_count: 1, collection_status: 'COMPLETE_WITH_WARNINGS',
+    }; });
+    await page.getByRole('button', { name: 'Export All', exact: true }).click();
+    await page.getByText('Raw evidence files: 3', { exact: true }).waitFor();
+    await page.getByText('Collection completed with warnings', { exact: true }).waitFor();
+    await page.getByText('Accepted NO_DATA files: 1 · Accepted LOW_DATA files: 1', { exact: true }).waitFor();
+    await page.evaluate(() => { window.__desktopExportResultOverride = { dataset_count: 2, failed_count: 0 }; });
+    await page.getByRole('button', { name: 'Export All', exact: true }).click();
+    await page.getByText('Raw evidence file count unavailable for this export', { exact: true }).waitFor();
+    await page.getByText('Normalized dataset files: 2', { exact: true }).waitFor();
 
     await page.getByRole(
       'button',

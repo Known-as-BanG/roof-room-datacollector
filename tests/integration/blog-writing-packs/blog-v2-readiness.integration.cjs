@@ -44,7 +44,42 @@ test('current real requirements keep legacy GA4 metric gaps and missing Sitemap 
   assert.equal(result.coverage_status, 'PARTIAL');
   assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'users' && b.code === 'SOURCE_CHANGE_REQUIRED'));
   assert.ok(result.blockers.some((b) => b.dataset_type === 'SITEMAP_URLS' && b.requirement_id === 'title' && b.code === 'SOURCE_CHANGE_REQUIRED'));
-  assert.ok(result.blockers.some((b) => b.dataset_type === 'SEARCH_TERMS' && b.requirement_id === 'reporting_window' && b.code === 'DECISION_REQUIRED'));
+  assert.equal(result.blockers.some((b) => b.dataset_type === 'SEARCH_TERMS' && b.requirement_id === 'reporting_window'), false);
+  assert.ok(result.blockers.some((b) => b.requirement_id === 'ads_requested_dates'));
+});
+
+test('approved Ads/Planner durations and SERP semantics do not hide actual publication evidence gaps', async () => {
+  const f = fixture();
+  const draft = await f.persist(families.map(([source, type], i) => f.add(`approved_${i}`, source, type)));
+  const filename = path.join(f.root, 'packages', 'draft', 'BLOG_DRAFT.json');
+  const before = fs.readFileSync(filename);
+  const requirements = structuredClone(BLOG_WRITING_PACK_V2_CURRENT_REQUIREMENTS);
+  Object.assign(requirements, {
+    ads_requested_dates: syntheticRequirements().ads_requested_dates,
+    gsc_requested_dates: syntheticRequirements().gsc_requested_dates,
+    ga4_requested_dates: syntheticRequirements().ga4_requested_dates,
+    keyword_planner_scope: syntheticRequirements().keyword_planner_scope,
+  });
+  const result = await f.evaluate(requirements, draft.created_at, 'PUBLICATION');
+  for (const [dataset, requirement] of [
+    ['SEARCH_TERMS', 'reporting_window'], ['KEYWORD_HISTORICAL_METRICS', 'historical_scope'],
+    ['GOOGLE_SERP', 'position_semantics'], ['GOOGLE_SERP', 'search_context'],
+  ]) assert.equal(result.blockers.some((b) => b.dataset_type === dataset && b.requirement_id === requirement), false, requirement);
+  for (const [dataset, code, requirement] of [
+    ['SEARCH_TERMS', 'EVIDENCE_INVALID', 'ads_account_scope'],
+    ['SEARCH_TERMS', 'FIELD_OBSERVATION_REQUIRED', 'ads_account_timezone'],
+    ['KEYWORD_HISTORICAL_METRICS', 'DECISION_REQUIRED', 'keyword_planner_calendar_context'],
+    ['KEYWORD_HISTORICAL_METRICS', 'FIELD_OBSERVATION_REQUIRED', 'keyword_planner_monthly_observations'],
+    ['KEYWORD_HISTORICAL_METRICS', 'SOURCE_CHANGE_REQUIRED', 'currency_context'],
+    ['KEYWORD_HISTORICAL_METRICS', 'DECISION_REQUIRED', 'keyword_coverage'],
+    ['QUERY_PAGE', 'SOURCE_CHANGE_REQUIRED', 'gsc_finality'],
+    ['GOOGLE_SERP', 'FIELD_OBSERVATION_REQUIRED', 'serp_acquisition'],
+    ['GOOGLE_SERP', 'DECISION_REQUIRED', 'query_coverage'],
+  ]) assert.ok(result.blockers.some((b) => b.mandatory && b.dataset_type === dataset && b.code === code && b.requirement_id === requirement), requirement);
+  assert.equal(result.coverage_status, 'PARTIAL');
+  assert.equal(result.delivery_readiness, 'NOT_EVALUATED');
+  assert.deepEqual(result.selected_evidence, draft.selected_evidence);
+  assert.deepEqual(fs.readFileSync(filename), before);
 });
 
 test('GSC accepted NO_DATA still reports an incorrect requested window independently of empty-result policy', async () => {
@@ -96,7 +131,7 @@ test('a synthetic profile cannot approve the seven implemented families remainin
   assert.equal(result.coverage_status, 'PARTIAL');
   assert.equal(result.coverage_scope, 'EXPLICIT_REQUIREMENTS_ONLY');
   assert.equal(result.delivery_readiness, 'NOT_EVALUATED');
-  assert.equal(result.blockers.length, 22);
+  assert.equal(result.blockers.length, 20);
   assert.ok(result.blockers.some((b) => b.mandatory && b.requirement_id === 'gsc_date_coverage'));
   assert.ok(result.blockers.some((b) => b.dataset_type === 'GA4_CONTENT_PERFORMANCE' && b.requirement_id === 'ga4_completed_days' && b.code === 'WINDOW_MISMATCH'));
   assert.equal(result.blockers.filter((b) => b.code === 'DECISION_REQUIRED' && b.requirement_id === 'field_compliance').length, 0);
