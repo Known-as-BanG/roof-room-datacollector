@@ -157,6 +157,7 @@ export interface DesktopRunState {
   can_resume: boolean;
   can_retry: boolean;
   can_cancel: boolean;
+  can_export?: boolean;
 }
 
 export interface DesktopPresetView {

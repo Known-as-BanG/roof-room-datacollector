@@ -97,8 +97,7 @@ module.exports = async (buildRoot, workRoot, t, options = {}) => {
   const loader = new ProductionDataPackageLoader(repository, storage);
   const controller = new DesktopMultiSourceController({ repository, readiness, application_version: 'test',
     package_directory: directories.runs, load_export: (id) => loader.loadRunExport(id) });
-  if (options.failed || options.mixed) {
-    await assert.rejects(controller.exportRun(started.run.run_id, 'ALL'), /not terminal/i);
+  if ((options.failed || options.mixed) && !options.partial) {
     await controller.cancelRun(started.run.run_id);
   }
   const jobs = repository.listJobs(started.run.run_id);

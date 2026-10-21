@@ -13,6 +13,107 @@ const sha = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const SOURCE = 'bitkimark-sitemap';
 const createFixture = require('./general-raw-evidence-fixture.cjs');
 const fixture = (t, options = {}) => createFixture(buildRoot, workRoot, t, options);
+const controllerFor = (f, overrides = {}) => {
+  const { DesktopMultiSourceController } = load('main/app/desktop-multisource-controller.js');
+  return new DesktopMultiSourceController({ repository: f.repository, application_version: 'test',
+    readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) }, package_directory: f.directories.runs,
+    load_export: (id) => f.loader.loadRunExport(id), ...overrides });
+};
+
+test('stable RETRY_REQUIRED exports accepted evidence in both modes with complete histories and immutable snapshots', async (t) => {
+  const f = await fixture(t, { mixed: true, partial: true });
+  const run = f.repository.getRun(f.run_id), jobs = f.repository.listJobs(f.run_id);
+  const histories = jobs.map((job) => f.repository.listAttempts(job.job_id));
+  assert.equal(run.run_status, 'RETRY_REQUIRED');
+  const published = [];
+  for (const mode of ['ALL', 'SUCCESSFUL_ONLY']) {
+    const result = await f.controller.exportRun(f.run_id, mode);
+    assert.equal(f.controller.getRunState(f.run_id).can_export, true);
+    assert.equal(result.collection_status, 'INCOMPLETE');
+    assert.equal(result.raw_file_count, 1); assert.equal(result.failed_count, 1);
+    assert.equal(result.unavailable_evidence_count, 1);
+    const manifest = JSON.parse(fs.readFileSync(path.join(result.export_directory, 'MANIFEST.json')));
+    const index = JSON.parse(fs.readFileSync(path.join(result.export_directory, 'RAW_EVIDENCE.json')));
+    assert.equal(manifest.run_status, 'RETRY_REQUIRED'); assert.equal(manifest.collection_status, 'INCOMPLETE');
+    assert.match(manifest.snapshot_id, /^[a-f0-9]{64}$/);
+    assert.equal(index.snapshot_id, manifest.snapshot_id); assert.equal(index.collection_status, 'INCOMPLETE');
+    assert.equal(index.jobs.length, 2); assert.equal(index.files.length, 1);
+    assert.deepEqual(index.jobs.map((j) => [j.job_id, j.execution_status, j.validation_status, j.accepted_artifact_id]),
+      jobs.map((j) => [j.job_id, j.execution_status, j.validation_status, j.accepted_artifact_id]));
+    assert.deepEqual(index.jobs.map((j) => j.attempts.map((a) => [a.attempt_id, a.execution_status, a.error_code])),
+      histories.map((items) => items.map((a) => [a.attempt_id, a.execution_status, a.error_code])));
+    assert.equal(JSON.parse(fs.readFileSync(path.join(result.export_directory, 'FAILURES.json'))).length, mode === 'ALL' ? 1 : 0);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(result.export_directory, 'DATASETS.json'))).length, 1);
+    assert.deepEqual(fs.readFileSync(path.join(result.export_directory, index.files[0].relative_path)), f.bytes);
+    published.push({ directory: result.export_directory, manifest: fs.readFileSync(path.join(result.export_directory, 'MANIFEST.json')),
+      index: fs.readFileSync(path.join(result.export_directory, 'RAW_EVIDENCE.json')) });
+    await assert.rejects(f.controller.exportRun(f.run_id, mode), /exist|overwrite/i);
+  }
+  assert.deepEqual(f.repository.getRun(f.run_id), run);
+  assert.deepEqual(f.repository.listJobs(f.run_id), jobs);
+  const controller = controllerFor(f, { execute_retry: async () => {} });
+  const failed = jobs.find((job) => job.execution_status === 'FAILED');
+  await controller.retryFailed(f.run_id);
+  f.repository.transitionJobExecution(failed.job_id, 'FAILED', { error_code: 'SECOND_FAILURE' });
+  f.repository.transitionRunStatus(f.run_id, 'RETRY_REQUIRED');
+  const later = await controller.exportRun(f.run_id, 'ALL');
+  assert.notEqual(later.export_directory, published[0].directory);
+  const laterIndex = JSON.parse(fs.readFileSync(path.join(later.export_directory, 'RAW_EVIDENCE.json')));
+  assert.equal(laterIndex.jobs.find((j) => j.job_id === failed.job_id).attempts.length, 2);
+  for (const old of published) {
+    assert.deepEqual(fs.readFileSync(path.join(old.directory, 'MANIFEST.json')), old.manifest);
+    assert.deepEqual(fs.readFileSync(path.join(old.directory, 'RAW_EVIDENCE.json')), old.index);
+  }
+});
+
+test('active execution, unsettled Jobs or Attempts, unrelated Run states and no accepted evidence cannot partially export', async (t) => {
+  const f = await fixture(t, { mixed: true, partial: true });
+  await assert.rejects(controllerFor(f, { is_run_active: () => true }).exportRun(f.run_id, 'ALL'), /active|stable|export/i);
+  const readRun = f.repository.getRun.bind(f.repository), readJobs = f.repository.listJobs.bind(f.repository);
+  for (const status of ['PENDING', 'RUNNING', 'MANUAL_ACTION_REQUIRED']) {
+    f.repository.getRun = (id) => ({ ...readRun(id), run_status: status });
+    await assert.rejects(f.loader.loadRunExport(f.run_id), /stable|export|terminal/i);
+    await assert.rejects(f.controller.exportRun(f.run_id, 'ALL'), /stable|export|terminal/i);
+  }
+  f.repository.getRun = readRun;
+  for (const status of ['PENDING', 'RUNNING', 'VALIDATING', 'MANUAL_ACTION_REQUIRED', 'RETRY_PENDING']) {
+    f.repository.listJobs = (id) => readJobs(id).map((j) => j.execution_status === 'FAILED' ? { ...j, execution_status: status } : j);
+    await assert.rejects(f.loader.loadRunExport(f.run_id), /stable|export|terminal/i);
+    await assert.rejects(f.controller.exportRun(f.run_id, 'ALL'), /stable|export|terminal/i);
+  }
+  f.repository.listJobs = readJobs;
+  const readAttempts = f.repository.listAttempts.bind(f.repository);
+  f.repository.listAttempts = (id) => readAttempts(id).map((a) => ({ ...a, execution_status: 'RUNNING' }));
+  await assert.rejects(f.loader.loadRunExport(f.run_id), /active|stable|attempt|terminal/i);
+  f.repository.listAttempts = readAttempts;
+  const none = await fixture(t, { failed: true, partial: true });
+  assert.equal(none.controller.getRunState(none.run_id).can_export, false);
+  await assert.rejects(none.loader.loadRunExport(none.run_id), /accepted|stable|export/i);
+  await assert.rejects(none.controller.exportRun(none.run_id, 'ALL'), /accepted|stable|export/i);
+});
+
+test('partial export excludes simultaneous retry or cancellation and detects evidence changes during loading', async (t) => {
+  const f = await fixture(t, { mixed: true, partial: true });
+  let release; const paused = new Promise((resolve) => { release = resolve; });
+  const controller = controllerFor(f, { execute_retry: async () => {}, load_export: async (id) => { await paused; return f.loader.loadRunExport(id); } });
+  const before = f.repository.listJobs(f.run_id), exporting = controller.exportRun(f.run_id, 'ALL');
+  exporting.catch(() => {});
+  try {
+    await assert.rejects(controller.retryFailed(f.run_id), /export/i);
+    await assert.rejects(controller.cancelRun(f.run_id), /export/i);
+    assert.deepEqual(f.repository.listJobs(f.run_id), before);
+  } finally { release(); }
+  await exporting;
+  const g = await fixture(t, { mixed: true, partial: true });
+  const read = g.loader.readAcceptedJobArtifact.bind(g.loader), attempts = g.repository.listAttempts.bind(g.repository);
+  g.loader.readAcceptedJobArtifact = async (...args) => {
+    const loaded = await read(...args);
+    g.repository.listAttempts = (id) => attempts(id).map((a) => ({ ...a, error_code: 'CHANGED_DURING_EXPORT' }));
+    return loaded;
+  };
+  await assert.rejects(g.controller.exportRun(g.run_id, 'ALL'), /changed|snapshot|stable/i);
+  assert.equal(fs.readdirSync(path.join(g.directories.runs, g.run_id, 'exports')).length, 0);
+});
 test('real completed SQLite Run exports exact accepted XML through the general desktop path despite Blog blockers', async (t) => {
   const f = await fixture(t);
   const store = new BlogWritingPackStore(path.join(f.root, 'blog-drafts'));
@@ -82,8 +183,9 @@ test('failed siblings, failed-only Runs and accepted NO_DATA preserve actual out
 });
 
 test('raw corruption, unaccepted artifacts, missing validation and unsafe storage paths fail before publication', async (t) => {
+  for (const partial of [false, true]) {
   for (const damage of ['corrupt', 'missing', 'unaccepted', 'validation', 'validation-mismatch', 'attempt', 'metadata', 'path', 'symlink']) {
-    const f = await fixture(t);
+    const f = await fixture(t, partial ? { mixed: true, partial: true } : {});
     if (damage === 'corrupt') { const b = fs.readFileSync(f.rawPath); b[0] ^= 1; fs.writeFileSync(f.rawPath, b); }
     if (damage === 'missing') fs.unlinkSync(f.rawPath);
     if (damage === 'symlink') { fs.renameSync(f.rawPath, `${f.rawPath}.real`); fs.symlinkSync(`${f.rawPath}.real`, f.rawPath); }
@@ -106,6 +208,8 @@ test('raw corruption, unaccepted artifacts, missing validation and unsafe storag
     }
     await assert.rejects(f.controller.exportRun(f.run_id, 'ALL'), /integrity|checksum|ENOENT|accepted|validation|identity|path|regular|symlink|escapes/i, damage);
     assert.equal(fs.existsSync(path.join(f.directories.runs, f.run_id, 'exports', 'all')), false);
+    assert.equal(fs.readdirSync(path.join(f.directories.runs, f.run_id, 'exports')).length, 0);
+  }
   }
 });
 
@@ -176,6 +280,15 @@ test('concurrent export attempts cannot overwrite the same final destination', a
   const result = results.find((r) => r.status === 'fulfilled').value;
   const index = JSON.parse(fs.readFileSync(path.join(result.export_directory, 'RAW_EVIDENCE.json')));
   assert.deepEqual(fs.readFileSync(path.join(result.export_directory, index.files[0].relative_path)), f.bytes);
+  const { buildDataPackage, writeDataPackage } = load('main/export/data-package-exporter.js');
+  const loaded = await f.loader.loadRunExport(f.run_id);
+  const dataPackage = buildDataPackage({ run: loaded.snapshot.run, jobs: loaded.snapshot.jobs, datasets: loaded.datasets, mode: 'ALL' });
+  const directory = path.join(f.root, 'writer-concurrency');
+  const writes = await Promise.allSettled([writeDataPackage(directory, dataPackage, loaded.raw), writeDataPackage(directory, dataPackage, loaded.raw)]);
+  assert.equal(writes.filter((write) => write.status === 'fulfilled').length, 1, 'Filesystem reservation must also protect independent publishers');
+  assert.equal(writes.filter((write) => write.status === 'rejected').length, 1);
+  const raw = JSON.parse(fs.readFileSync(path.join(directory, 'RAW_EVIDENCE.json')));
+  assert.deepEqual(fs.readFileSync(path.join(directory, raw.files[0].relative_path)), f.bytes);
 });
 
 test('native HTTP XML, official API JSON and imported XLSX share one persisted Run and export exact evidence', async (t) => {

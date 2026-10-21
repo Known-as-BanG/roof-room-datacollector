@@ -10,7 +10,7 @@ import type { JobRecord, RunRecord } from '../../shared/run-job';
 import { safeDataPackageContext, type DataPackageInputDataset, type DataPackageRawEvidence } from './data-package-exporter';
 import type { AttemptRecord } from '../../shared/attempt';
 import type { ValidationSummaryRecord } from '../../shared/validation-summary';
-import { isTerminalRunStatus } from '../core/run-execution-state-machine';
+import { canExportRunEvidence } from '../core/run-export-eligibility';
 import type { StorageManager } from '../storage/storage-manager';
 import { createAttemptDocumentFilename } from '../storage/storage-manager';
 import type { SerpApiAcquisitionProvenance } from '../../shared/serpapi';
@@ -46,6 +46,12 @@ export interface ProductionDataPackageRepository {
   getArtifact(artifact_id: string): ArtifactRecord | null;
   listAttempts?(job_id: string): AttemptRecord[];
   getValidationSummary?(validation_id: string): ValidationSummaryRecord | null;
+}
+
+export interface RunExportSnapshot {
+  run: RunRecord;
+  jobs: JobRecord[];
+  snapshot_id: string;
 }
 
 const asObject = (value: unknown, context: string): Record<string, unknown> => {
@@ -95,15 +101,31 @@ export class ProductionDataPackageLoader {
     private readonly storage: Pick<StorageManager, 'resolveRunRelativePath'>,
   ) {}
 
-  async loadRunExport(run_id: string): Promise<{ datasets: DataPackageInputDataset[]; raw: DataPackageRawEvidence }> {
+  private readExportState(run_id: string) {
     const run = this.repository.getRun(run_id);
-    if (!run || !isTerminalRunStatus(run.run_status)) throw new Error('General export requires a known terminal Run.');
+    if (!run) throw new Error('General export requires a known Run.');
     if (!this.repository.listAttempts || !this.repository.getValidationSummary) throw new Error('Raw export requires persisted Attempt and Validation provenance.');
+    const jobs = this.repository.listJobs(run_id);
+    const attempts = jobs.map((job) => this.repository.listAttempts!(job.job_id));
+    const artifactIds = new Set([...jobs.map((job) => job.accepted_artifact_id), ...attempts.flat().map((attempt) => attempt.candidate_artifact_id)]);
+    return structuredClone({ run, jobs, attempts,
+      artifacts: [...artifactIds].filter((id): id is string => id !== null).map((id) => this.repository.getArtifact(id)),
+      validations: attempts.flat().filter((attempt) => attempt.validation_id !== null)
+        .map((attempt) => this.repository.getValidationSummary!(attempt.validation_id!)),
+    });
+  }
+
+  async loadRunExport(run_id: string): Promise<{ datasets: DataPackageInputDataset[]; raw: DataPackageRawEvidence; snapshot: RunExportSnapshot }> {
+    const state = this.readExportState(run_id);
+    const { run, jobs } = state;
+    if (!canExportRunEvidence(run.run_status, jobs, state.attempts.flat())) {
+      throw new Error('General export requires a terminal or stable RETRY_REQUIRED Run with accepted evidence.');
+    }
     const datasets: DataPackageInputDataset[] = [];
     const raw: DataPackageRawEvidence = { files: [], jobs: [] };
-    for (const job of this.repository.listJobs(run_id)) {
+    for (const [index, job] of jobs.entries()) {
       if (job.run_id !== run_id || !run.selected_sources.includes(job.source_id)) throw new Error('Raw export Job ownership is inconsistent.');
-      const attempts = this.repository.listAttempts(job.job_id);
+      const attempts = state.attempts[index];
       raw.jobs.push({ job_id: job.job_id, source_id: job.source_id, job_key: job.job_key,
         execution_status: job.execution_status, validation_status: job.validation_status, accepted_artifact_id: job.accepted_artifact_id,
         attempts: attempts.map(({ attempt_id, attempt_number, execution_status, candidate_artifact_id, validation_id, error_code }) => ({
@@ -116,7 +138,7 @@ export class ProductionDataPackageLoader {
       const { artifact, bytes } = loaded;
       const matching = attempts.filter((item) => item.attempt_number === artifact.attempt_number);
       const attempt = matching[0];
-      const validation = attempt?.validation_id ? this.repository.getValidationSummary(attempt.validation_id) : null;
+      const validation = state.validations.find((item) => item?.validation_id === attempt?.validation_id);
       if (matching.length !== 1 || !attempt || attempt.job_id !== job.job_id || attempt.execution_status !== 'COMPLETED'
         || attempt.candidate_artifact_id !== artifact.artifact_id || !validation
         || validation.validation_id !== attempt.validation_id || validation.run_id !== run_id || validation.job_id !== job.job_id || validation.artifact_id !== artifact.artifact_id
@@ -148,7 +170,8 @@ export class ProductionDataPackageLoader {
         normalization_status: parsed ? 'AVAILABLE' : 'UNAVAILABLE',
       });
     }
-    return { datasets, raw };
+    if (!isDeepStrictEqual(state, this.readExportState(run_id))) throw new Error('Run evidence changed during export; a stable snapshot is required.');
+    return { datasets, raw, snapshot: { run, jobs, snapshot_id: createHash('sha256').update(JSON.stringify(state)).digest('hex') } };
   }
 
   private async assertSafeExportArtifactPath(artifact: ArtifactRecord): Promise<void> {

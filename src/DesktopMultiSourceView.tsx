@@ -1,3 +1,4 @@
+import type { QueryGroup } from './shared/query-config';
 import {
   useEffect,
   useMemo,
@@ -521,6 +522,7 @@ const getReviewedGoogleTrendsSummary = (
   review: DesktopReview,
 ): {
   groupIds: string[];
+  groups: { id: string; queries: string[] }[];
 } | null => {
   const reviewed =
     review.reviewed_draft;
@@ -547,6 +549,7 @@ const getReviewedGoogleTrendsSummary = (
 
   const groupIds:
     string[] = [];
+  const queryGroups: { id: string; queries: string[] }[] = [];
 
   for (const rawGroup of groups) {
     if (
@@ -568,6 +571,10 @@ const getReviewedGoogleTrendsSummary = (
       return null;
     }
 
+    const queries = (rawGroup as JsonObject).queries;
+    if (!Array.isArray(queries) || queries.length === 0
+      || !queries.every((query) => typeof query === 'string' && query.length > 0)) return null;
+    queryGroups.push({ id: groupId, queries: queries as string[] });
     groupIds.push(
       groupId,
     );
@@ -587,6 +594,7 @@ const getReviewedGoogleTrendsSummary = (
 
   return {
     groupIds,
+    groups: queryGroups,
   };
 };
 
@@ -1126,6 +1134,12 @@ export function DesktopMultiSourceView() {
     setGa4EndDate,
   ] = useState('');
 
+  const [trendsQueryGroups, setTrendsQueryGroups] = useState<QueryGroup[]>([]);
+  const [trendsSelectedIds, setTrendsSelectedIds] = useState<string[]>([]);
+  const [trendsDateMode, setTrendsDateMode] = useState<'ROLLING' | 'EXPLICIT'>('ROLLING');
+  const [trendsStart, setTrendsStart] = useState('');
+  const [trendsEnd, setTrendsEnd] = useState('');
+
   const [conversionDateStart, setConversionDateStart] = useState('');
   const [conversionDateEnd, setConversionDateEnd] = useState('');
 
@@ -1603,6 +1617,12 @@ export function DesktopMultiSourceView() {
         ]) => {
           if (!mounted) {
             return;
+          }
+
+          if (bootstrap.query_config.status === 'READY') {
+            const groups = bootstrap.query_config.config.groups;
+            setTrendsQueryGroups(groups.map((group) => ({ ...group, queries: [...group.queries] })));
+            setTrendsSelectedIds(groups.map((group) => group.query_group_id));
           }
 
           setWorkspaceView(
@@ -2278,10 +2298,18 @@ export function DesktopMultiSourceView() {
       )
       && task.date_policy !== undefined
     ) {
+      if (trendsSelectedIds.length === 0
+        || trendsSelectedIds.some((id) => !trendsQueryGroups.some((group) => group.query_group_id === id))) return null;
+      if (trendsDateMode === 'EXPLICIT') {
+        if (!isValidAbsoluteDateRange(trendsStart, trendsEnd)) return null;
+        return { included: true, task_id: task.task_id, query_group_ids: [...trendsSelectedIds],
+          date_mode: 'EXPLICIT', requested_date_start: trendsStart, requested_date_end: trendsEnd };
+      }
       return {
         included: true,
         task_id: task.task_id,
         date_policy: task.date_policy,
+        query_group_ids: [...trendsSelectedIds],
       };
     }
 
@@ -2431,6 +2459,12 @@ export function DesktopMultiSourceView() {
         setMessage(
           'Use a bounded subset of the verified Bitkimark sitemap URLs, beginning with sitemap.xml.',
         );
+        return;
+      }
+
+      if (selectedTask.source_id === 'google-trends'
+        && buildCurrentTaskSourceConfiguration(selectedTask) === null) {
+        setMessage('Select configured query groups and a valid Trends date range before Review.');
         return;
       }
 
@@ -4443,8 +4477,7 @@ export function DesktopMultiSourceView() {
                   selectedTask.source_id
                     === 'google-trends'
                 )
-                && selectedTask.date_policy
-                  !== undefined
+                && buildCurrentTaskSourceConfiguration(selectedTask) !== null
               )
               || (selectedTask.source_id === 'google-search-console-query-page'
                 && buildCurrentTaskSourceConfiguration(selectedTask) !== null)
@@ -4646,6 +4679,46 @@ export function DesktopMultiSourceView() {
                           </select>
                         </label>
                       </>
+                    )}
+
+                    {selectedTask.source_id === 'google-trends' && (
+                      <fieldset className="rr-config-fieldset">
+                        <legend>Google Trends Scope</legend>
+                        <p>Choose existing comparison groups. Search terms remain bound to the configured group.</p>
+                        {trendsQueryGroups.map((group) => (
+                          <label key={group.query_group_id}>
+                            <input type="checkbox" checked={trendsSelectedIds.includes(group.query_group_id)}
+                              onChange={(event) => {
+                                setTrendsSelectedIds((ids) => event.target.checked
+                                  ? [...ids, group.query_group_id] : ids.filter((id) => id !== group.query_group_id));
+                                setQuickRunReview(null);
+                              }} />
+                            {group.query_group_id} — {group.query_group_name}
+                            <span>{' · '}{group.queries.join(' · ')}</span>
+                          </label>
+                        ))}
+                        <label>
+                          Date window
+                          <select aria-label="Trends date mode" value={trendsDateMode}
+                            onChange={(event) => { setTrendsDateMode(event.target.value as 'ROLLING' | 'EXPLICIT'); setQuickRunReview(null); }}>
+                            <option value="ROLLING">Rolling 24 months through yesterday</option>
+                            <option value="EXPLICIT">Explicit dates</option>
+                          </select>
+                        </label>
+                        {trendsDateMode === 'EXPLICIT' && (
+                          <>
+                            <label>Requested start
+                              <input type="date" aria-label="Trends requested start" value={trendsStart}
+                                onChange={(event) => { setTrendsStart(event.target.value); setQuickRunReview(null); }} />
+                            </label>
+                            <label>Requested end
+                              <input type="date" aria-label="Trends requested end" value={trendsEnd}
+                                onChange={(event) => { setTrendsEnd(event.target.value); setQuickRunReview(null); }} />
+                            </label>
+                          </>
+                        )}
+                        <p>Türkiye · All Categories · Web Search · Search Term</p>
+                      </fieldset>
                     )}
 
                     {selectedTask.task_id === 'google-ads-conversion-date-performance' && (
@@ -5462,8 +5535,11 @@ export function DesktopMultiSourceView() {
                           }
                         </p>
 
+                        {summary.groups.map((group) => (
+                          <p key={group.id}>{group.id}: {group.queries.join(' · ')}</p>
+                        ))}
                         <p>
-                          Fixed scope: Turkey · All Categories · Web Search · Search Term
+                          Fixed scope: Türkiye · All Categories · Web Search · Search Term
                         </p>
                       </section>
                     );
@@ -6215,15 +6291,17 @@ export function DesktopMultiSourceView() {
 
                 {
                   (
-                    activeRunState.run.run_status === 'COMPLETED'
+                    activeRunState.can_export ?? (activeRunState.run.run_status === 'COMPLETED'
                     || activeRunState.run.run_status === 'COMPLETED_WITH_WARNINGS'
                     || activeRunState.run.run_status === 'FAILED'
-                    || activeRunState.run.run_status === 'CANCELLED'
+                    || activeRunState.run.run_status === 'CANCELLED')
                   )
                   && (
                     <div
                       className="rr-task-detail-actions"
                     >
+                      {activeRunState.run.run_status === 'RETRY_REQUIRED'
+                        && <p>Partial evidence export · Collection incomplete</p>}
                       <button
                         type="button"
                         className="rr-primary-action"
@@ -6254,13 +6332,13 @@ export function DesktopMultiSourceView() {
                       >
                         Export Successful Only
                       </button>
-                      <button
+                      {['COMPLETED', 'COMPLETED_WITH_WARNINGS', 'FAILED', 'CANCELLED'].includes(activeRunState.run.run_status) && <button
                         type="button"
                         disabled={busy}
                         onClick={() => void buildBlogWritingPack()}
                       >
                         Build Blog Writing Pack
-                      </button>
+                      </button>}
                     </div>
                   )
                 }

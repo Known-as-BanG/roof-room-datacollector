@@ -1,13 +1,47 @@
 # RoofRoom Data Collector — Project Handoff
 
-**Checkpoint date:** 2026-10-20 (isolated packaged raw-export acceptance and prior readiness reconciliation, uncommitted)
-**Current branch:** `feat/google-analytics-4-source-v1`
-**Implementation checkpoint:** committed baseline `16e7487bd86d401157f96eca2558d87cac59b54d`. The focused uncommitted reconciliation removes obsolete product-decision blockers for Ads reporting duration, Planner historical duration and already-validated SERP organic-position/search-profile semantics. Calendar, provider-evidence, query-coverage and integrity checks remain. The committed development checkpoint is recorded in `docs/superpowers/plans/2026-10-19-development-checkpoint.md`.
-**Repository state:** prior WIP and private `reports/` are preserved. Explicitly property-bound 28-day GSC Query × Page collections now preserve a separate final/date response and observed receipt in native Attempt metadata. New drafts freeze its integrity reference; source-owned coverage inspection requires every returned date and keeps sparse Query × Page observations separate. Complete date coverage never clears the existing `gsc_finality` publication blocker. Canonical semantics are in `DATA_CONTRACTS.md`, Google Search Console → Query × Page finality evidence boundary; execution detail and exact changed files are in the existing Ads/GSC compliance plan.
-**Primary Collector delivery:** the general desktop export uses `loadRunExport`, preserving existing normalized files plus exact accepted raw files and `RAW_EVIDENCE.json`. The desktop result/UI now lead with actual raw files, separately reporting optional normalized files, failed/cancelled Jobs, unavailable evidence, accepted NO_DATA/LOW_DATA and destination. Export success stays distinct from collection completeness; SUCCESSFUL_ONLY retains whole-Run failure counts and legacy results do not fabricate raw counts. The expanded real SQLite/native-runtime/loader/controller suite passed 10/10: mocked Sitemap XML (177 bytes), official GSC API JSON (194 bytes), native İkas XLSX import (605 bytes), genuine Trends LOW_DATA CSV, failure/NO_DATA/raw-only outcomes, provenance/integrity and existing safety checks. Input, persisted artifact and exported bytes/SHA-256 match for all three native representations. Renderer smoke, existing loader/exporter/desktop export and v1 compatibility gates, TypeScript and targeted lint passed. Execution details are in `docs/superpowers/plans/2026-10-20-desktop-raw-export-completion.md`; packaged acceptance is separately recorded below; live-provider acceptance remains unverified.
-**Isolated packaged acceptance:** the early QA hook and guarded launcher passed 5/5 safety tests, including 20 invalid configurations and stale-package rejection before spawn. Ordinary launch paths remain unchanged. Existing Forge/ad-hoc packaging and signature verification passed. The actual packaged Electron 43.4.0 app loaded its file renderer, returned real IPC, initialized isolated schema-8 SQLite with quick_check ok, and completed four real UI export cases: mixed XML/API JSON/XLSX in both modes plus separate NO_DATA XML and LOW_DATA CSV. All eight raw copies match five native accepted artifacts in bytes/hash/provenance; UI counts, incomplete/warning status, destination and overwrite refusal were verified. Fixtures were collected/validated in compiled Node code before packaged launch; packaged provider acquisition is not established. Exact commands, hashes, QA-root evidence and limitations are in `docs/superpowers/plans/2026-10-20-isolated-packaged-acceptance.md`. General-export open/reveal is not verified; provider/credential/release acceptance remains separate.
-**Current deterministic verification:** readiness 11/11, SERP compliance 33/33, JSON publication 59/59, field compliance 13/13, Planner compliance 14/14 and GA4 compliance 29/29 passed. Native SERP, v1 assembler/store, TypeScript, targeted TypeScript/CommonJS lint and diff checks passed. A fixed accepted-evidence fixture through the actual evaluator changes current-profile draft/publication blocker counts from 40/45 to 36/41; explicit-profile counts change from 22/27 to 20/25. Only the obsolete conditions disappear; all other blocker reasons are unchanged and overall readiness stays PARTIAL. Valid bound Ads evidence now satisfies its family under the current profile with explicit endpoints; the same evidence at a later publication date still fails its calendar window. No live-provider, full-policy publication or complete delivery acceptance is established.
-**Current action:** preserve the isolated packaged runtime/export evidence; real provider acquisition and credential workflows remain unverified and require separate scope. Existing output targets are refused rather than overwritten. For specialized Blog v2 delivery, resolve how GSC's latest eligible 28-day interval is proved at actual publication creation; historical complete date evidence does not establish it. Supported desktop Query × Page Jobs now require and freeze an explicit property; taskless legacy Jobs retain compatibility without fabricated property observations or date proof. Query × Page row completeness is not guaranteed. Planner and other mandatory source gaps remain independently blocked. Actual Blog source-policy publication remains blocked; successful Blog JSON delivery status remains INCOMPLETE.
+**Checkpoint date:** 2026-10-20 — Google Trends evidence and stable partial export.
+**Current branch:** `feat/google-analytics-4-source-v1`.
+**Scope and Git:** the reviewed work extends Collector checkpoint `a1015a4` on the
+existing feature branch. It contains Google Trends CSV/scope compatibility,
+packaged SQLite resolution and source-neutral partial export; no new GA4 source
+work is included. The final scope/verification/controlled-commit record is
+`docs/superpowers/plans/2026-10-20-google-trends-final-review.md`.
+
+## Current acceptance
+
+| Layer | Verified boundary |
+| --- | --- |
+| Implemented | Observed Turkish weekly CSV compatibility; trusted group/explicit-date selection; Review/Start scope checks; packaged `node:sqlite` resolution; stable partial general export |
+| Deterministic | Focused parser/production-validator, controller, export, renderer, TypeScript and lint checks. The final review adds a regression for clearing both source task IDs while retaining the root reviewed task identity |
+| Real provider evidence | The historical five-Job Run's GT01 Attempt 2 is COMPLETED/VALID (15/15). Native CSV is 2691 bytes and matches its persisted SHA-256; Excel derivative matches all 525 observations and 205 literal zeros. Attempt 1 remains RATE_LIMITED/HTTP 429 |
+| Packaged/runtime and delivery | Prior isolated packaged QA exercised both general export modes through actual UI/IPC. Exported GT01 CSV matches the original bytes/hash; all five Jobs and both GT01 Attempts remain traceable. Published snapshot is INCOMPLETE; historical Run is RETRY_REQUIRED |
+| Final review hardening | The missing-source-task-ID bypass was reproduced and corrected in the controller. Its new adversarial case is deterministically verified; prior packaged receipts predate this final guard addition |
+
+Detailed immutable QA evidence remains in
+`reports/qa/gt01-attempt-2-accepted-evidence-2026-10-20.md` and
+`reports/qa/partial-evidence-export-2026-10-20.md`. The first report records the
+former terminal-only export blocker; the later implementation/report supersedes
+that export limitation through approved stable partial snapshots. Historical
+report contents and evidence files are preserved.
+
+**Open boundaries:** GT02–GT05 remain FAILED; the historical five-Job Run did not
+complete. The separately authorized isolated one-Job scope test ended RATE_LIMITED
+and must not share provenance with the accepted historical Attempt 2. Google Trends
+acquisition beyond the recorded GT01 case, other sources' live acceptance,
+large-volume reliability, release/distribution and an installed-app update are not
+established. The production application installation remains unchanged. No new live
+collection or production mutation is part of this checkpoint.
+
+**Current action:** preserve the accepted evidence and immutable partial exports.
+No repeat collection is needed to deliver the GT01 evidence already exported.
+Further acquisition, retries or production installation require a separate scope.
+General export remains independent of specialized Blog eligibility; Blog v2 source
+coverage/publication blockers and previously recorded source limitations below
+remain unchanged. Prior broader raw-export/readiness evidence is routed through
+`docs/superpowers/plans/2026-10-20-desktop-raw-export-completion.md`,
+`docs/superpowers/plans/2026-10-20-isolated-packaged-acceptance.md` and
+`docs/superpowers/plans/2026-10-19-development-checkpoint.md`.
 
 ---
 
@@ -32,7 +66,7 @@ Authoritative repository:
 Observed current state:
 
     branch:                     feat/google-analytics-4-source-v1
-    production implementation:  P2-02 conversion-date reporting checkpoint
+    latest reviewed work:       Google Trends evidence and stable partial export
 
 The Conversion Configuration production implementation is committed. The focused Conversion Configuration gate and this canonical documentation update form the slice-closing checkpoint that contains this handoff revision.
 

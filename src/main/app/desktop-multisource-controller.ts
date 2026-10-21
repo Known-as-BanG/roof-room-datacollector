@@ -1,3 +1,6 @@
+import { isDeepStrictEqual } from 'node:util';
+import { canExportRunEvidence } from '../core/run-export-eligibility';
+import type { RunExportSnapshot } from '../export/production-data-package-loader';
 import { requireGscPropertySelection, requireGscPropertyBinding } from '../sources/google-search-console/gsc-date-coverage';
 import type {
   ReusableCollectionConfiguration,
@@ -151,7 +154,7 @@ cancel_active_run?: (
 ) => Promise<void>;
   package_directory?: string;
   load_datasets?: (run_id: string) => Promise<Parameters<typeof buildDataPackage>[0]['datasets']>;
-  load_export?: (run_id: string) => Promise<{ datasets: DataPackageInputDataset[]; raw: DataPackageRawEvidence }>;
+  load_export?: (run_id: string) => Promise<{ datasets: DataPackageInputDataset[]; raw: DataPackageRawEvidence; snapshot?: RunExportSnapshot }>;
   open_accepted_artifact?: (artifact: ArtifactRecord) => Promise<void>;
 }
 
@@ -736,6 +739,12 @@ const productionPlanner = (sourceId: string, config: Record<string, unknown>): J
 };
 
 export class DesktopMultiSourceController {
+  private readonly exportingRuns = new Set<string>();
+
+  private assertNotExporting(run_id: string): void {
+    if (this.exportingRuns.has(run_id)) throw new Error(`Run ${run_id} evidence export is in progress.`);
+  }
+
   private readonly sourceOrder: readonly string[];
   private readonly sourceNames: Record<string, string>;
   private readonly planner: (source_id: string, source_config: Record<string, unknown>) => JobPlan[];
@@ -1331,6 +1340,28 @@ export class DesktopMultiSourceController {
       );
     }
 
+    const reusableTrends = asJsonObjectValue(asJsonObjectValue(reviewedDraft.reusable_configuration.sources)['google-trends']);
+    const resolvedTrends = sourceConfig(reviewedDraft.resolved_configuration, 'google-trends');
+    if (included(reviewedDraft.resolved_configuration, 'google-trends')
+      && (reviewedDraft.task_id === 'google-trends-interest-over-time'
+        || reusableTrends.task_id === 'google-trends-interest-over-time'
+        || resolvedTrends.task_id === 'google-trends-interest-over-time')) {
+      const singleSource = reviewedDraft.included_sources.length === 1;
+      const expected = this.resolveReviewedDraft({
+        workspace_id: reviewedDraft.workspace_id,
+        origin: { kind: 'BLANK' },
+        source_cards: [],
+        reusable_configuration: singleSource ? reviewedDraft.reusable_configuration
+          : { sources: { 'google-trends': reusableTrends } },
+      }, new Date(reviewedDraft.resolved_at));
+      const expectedScope = singleSource ? expected?.resolved_configuration
+        : expected && sourceConfig(expected.resolved_configuration, 'google-trends');
+      const reviewedScope = singleSource ? reviewedDraft.resolved_configuration : resolvedTrends;
+      if (expected === null || !isDeepStrictEqual(expectedScope, reviewedScope)) {
+        throw new Error('Reviewed Google Trends scope changed or is invalid; Review again before Start.');
+      }
+    }
+
     const statuses =
       await Promise.all(
         this.sourceOrder.map(
@@ -1746,7 +1777,7 @@ export class DesktopMultiSourceController {
         run_id,
       );
 
-    const isActive =
+    const isActive = this.exportingRuns.has(run_id) ||
       this.dependencies
         .is_run_active?.(
           run_id,
@@ -1821,12 +1852,16 @@ export class DesktopMultiSourceController {
       can_resume,
       can_retry,
       can_cancel,
+      can_export: !isActive && this.dependencies.package_directory !== undefined
+        && canExportRunEvidence(run.run_status, jobs, job_attempts)
+        && (isTerminalRunStatus(run.run_status) || this.dependencies.load_export !== undefined),
     };
   }
 
   async cancelRun(
   run_id: string,
 ): Promise<DesktopRunState> {
+  this.assertNotExporting(run_id);
   const run =
     this.dependencies.repository
       .getRun(
@@ -2006,6 +2041,7 @@ export class DesktopMultiSourceController {
     await this.dependencies.open_accepted_artifact(artifact);
   }
   async retryFailed(run_id: string): Promise<DesktopRunState> {
+    this.assertNotExporting(run_id);
     const run = this.dependencies.repository.getRun(run_id);
     if (!run) throw new Error(`Unknown Run: ${run_id}`);
 
@@ -2076,6 +2112,7 @@ export class DesktopMultiSourceController {
   async resumeInterrupted(
     run_id: string,
   ): Promise<DesktopRunState> {
+    this.assertNotExporting(run_id);
     const run =
       this.dependencies.repository
         .getRun(
@@ -2206,6 +2243,7 @@ export class DesktopMultiSourceController {
   async continueManual(
     run_id: string,
   ): Promise<DesktopRunState> {
+    this.assertNotExporting(run_id);
     const run =
       this.dependencies.repository
         .getRun(
@@ -2317,39 +2355,60 @@ export class DesktopMultiSourceController {
   async exportRun(run_id: string, mode: DataPackageMode): Promise<DesktopDataPackageExportResult> {
     if (!this.dependencies.package_directory) throw new Error('Data Package export is unavailable.');
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(run_id) || !['ALL', 'SUCCESSFUL_ONLY'].includes(mode)) throw new Error('Unsafe Data Package export path or mode.');
-    const run = this.dependencies.repository.getRun(run_id);
+    this.assertNotExporting(run_id);
+    const run = structuredClone(this.dependencies.repository.getRun(run_id));
     if (run === null) throw new Error(`Unknown Run: ${run_id}`);
-    if (!isTerminalRunStatus(run.run_status)) throw new Error(`Run ${run_id} is not terminal and cannot be exported.`);
-    const loaded = this.dependencies.load_export ? await this.dependencies.load_export(run_id) : undefined;
-    if (!loaded && !this.dependencies.load_datasets) throw new Error('Data Package dataset loading is unavailable.');
-    const datasets = loaded?.datasets ?? await this.dependencies.load_datasets!(run_id);
-    const dataPackage = this.buildPackage(run_id, mode, datasets);
-    const directory = `${this.dependencies.package_directory}/${run_id}/exports/${mode.toLowerCase()}`;
-    await writeDataPackage(directory, dataPackage, loaded?.raw);
-    const result: DesktopDataPackageExportResult = {
-      export_directory: directory,
-      dataset_count: dataPackage.datasets.length,
-      failed_count: dataPackage.manifest.failed_jobs,
-    };
-    if (!loaded) return result;
-    const files = loaded.raw.files;
-    const unavailable = loaded.raw.jobs.length - files.length;
-    const noData = files.filter((file) => file.validation_status === 'NO_DATA').length;
-    const lowData = files.filter((file) => file.validation_status === 'LOW_DATA').length;
-    return {
-      ...result,
-      raw_file_count: files.length,
-      normalized_file_count: dataPackage.datasets.length,
-      unavailable_evidence_count: unavailable,
-      normalization_unavailable_count: files.filter((file) => file.normalization_status === 'UNAVAILABLE').length,
-      no_data_file_count: noData,
-      low_data_file_count: lowData,
-      collection_status: unavailable > 0 || !['COMPLETED', 'COMPLETED_WITH_WARNINGS'].includes(run.run_status)
-        ? 'INCOMPLETE'
-        : run.run_status === 'COMPLETED_WITH_WARNINGS' || noData > 0 || lowData > 0
-          ? 'COMPLETE_WITH_WARNINGS'
-          : 'COMPLETE',
-    };
+    const jobs = structuredClone(this.dependencies.repository.listJobs(run_id));
+    if (this.dependencies.is_run_active?.(run_id) || !canExportRunEvidence(run.run_status, jobs)) {
+      throw new Error(`Run ${run_id} is not terminal or stable for evidence export.`);
+    }
+    const partial = run.run_status === 'RETRY_REQUIRED';
+    if (partial && !this.dependencies.load_export) throw new Error('Partial export requires verified raw evidence and a stable snapshot.');
+    this.exportingRuns.add(run_id);
+    try {
+      const loaded = this.dependencies.load_export ? await this.dependencies.load_export(run_id) : undefined;
+      if (!loaded && !this.dependencies.load_datasets) throw new Error('Data Package dataset loading is unavailable.');
+      const datasets = loaded?.datasets ?? await this.dependencies.load_datasets!(run_id);
+      if (this.dependencies.is_run_active?.(run_id) || !isDeepStrictEqual(run, this.dependencies.repository.getRun(run_id))
+        || !isDeepStrictEqual(jobs, this.dependencies.repository.listJobs(run_id))
+        || loaded?.snapshot && (!isDeepStrictEqual(run, loaded.snapshot.run) || !isDeepStrictEqual(jobs, loaded.snapshot.jobs))) {
+        throw new Error('Run evidence changed during export; a stable snapshot is required.');
+      }
+      if (partial && (!loaded?.snapshot || !/^[a-f0-9]{64}$/u.test(loaded.snapshot.snapshot_id) || loaded.raw.files.length === 0)) {
+        throw new Error('Partial export requires accepted raw evidence and a verified snapshot.');
+      }
+      const dataPackage = buildDataPackage({ run, jobs, datasets, mode });
+      if (partial) dataPackage.manifest.snapshot_id = loaded!.snapshot!.snapshot_id;
+      const destination = partial ? `partial/${dataPackage.manifest.snapshot_id}/${mode.toLowerCase()}` : mode.toLowerCase();
+      const directory = `${this.dependencies.package_directory}/${run_id}/exports/${destination}`;
+      await writeDataPackage(directory, dataPackage, loaded?.raw);
+      const result: DesktopDataPackageExportResult = {
+        export_directory: directory,
+        dataset_count: dataPackage.datasets.length,
+        failed_count: dataPackage.manifest.failed_jobs,
+      };
+      if (!loaded) return result;
+      const files = loaded.raw.files;
+      const unavailable = loaded.raw.jobs.length - files.length;
+      const noData = files.filter((file) => file.validation_status === 'NO_DATA').length;
+      const lowData = files.filter((file) => file.validation_status === 'LOW_DATA').length;
+      return {
+        ...result,
+        raw_file_count: files.length,
+        normalized_file_count: dataPackage.datasets.length,
+        unavailable_evidence_count: unavailable,
+        normalization_unavailable_count: files.filter((file) => file.normalization_status === 'UNAVAILABLE').length,
+        no_data_file_count: noData,
+        low_data_file_count: lowData,
+        collection_status: unavailable > 0 || !['COMPLETED', 'COMPLETED_WITH_WARNINGS'].includes(run.run_status)
+          ? 'INCOMPLETE'
+          : run.run_status === 'COMPLETED_WITH_WARNINGS' || noData > 0 || lowData > 0
+            ? 'COMPLETE_WITH_WARNINGS'
+            : 'COMPLETE',
+      };
+    } finally {
+      this.exportingRuns.delete(run_id);
+    }
   }
 
   private resolveMultiSourceExecutionConfiguration(
@@ -2371,6 +2430,14 @@ export class DesktopMultiSourceController {
       );
 
     if (includedSourceIds.length <= 1) {
+      const trends = sourceConfig(reusableConfiguration, 'google-trends');
+      if (includedSourceIds[0] === 'google-trends'
+        && trends.task_id === 'google-trends-interest-over-time'
+        && this.resolveReviewedDraft(draft, resolvedAt) === null) {
+        const sources = asJsonObjectValue(reusableConfiguration.sources);
+        sources['google-trends'] = { ...trends, query_groups: [] };
+        reusableConfiguration.sources = sources;
+      }
       return reusableConfiguration;
     }
 
@@ -2539,6 +2606,9 @@ export class DesktopMultiSourceController {
         );
 
       if (reviewedSource === null) {
+        if (sourceId === 'google-trends' && sourceConfiguration.task_id === 'google-trends-interest-over-time') {
+          resolvedSources[sourceId] = { ...sourceConfiguration, query_groups: [] };
+        }
         continue;
       }
 
@@ -3340,49 +3410,36 @@ export class DesktopMultiSourceController {
     if (
       sourceId === 'google-trends'
     ) {
-      if (
-        config.task_id
-          !== 'google-trends-interest-over-time'
-        || config.date_policy
-          !== 'TODAY_MINUS_24_CALENDAR_MONTHS_TO_YESTERDAY'
-      ) {
-        return null;
+      if (config.task_id !== 'google-trends-interest-over-time') return null;
+      const mode = config.date_mode === undefined ? 'ROLLING' : config.date_mode;
+      if (mode !== 'ROLLING' && mode !== 'EXPLICIT') return null;
+      if (mode === 'ROLLING' && (config.date_policy !== 'TODAY_MINUS_24_CALENDAR_MONTHS_TO_YESTERDAY'
+        || config.requested_date_start !== undefined || config.requested_date_end !== undefined)) return null;
+      if (mode === 'EXPLICIT' && config.date_policy !== undefined) return null;
+
+      const trustedGroups = this.dependencies.google_trends_query_groups ?? [];
+      const selectedIds = config.query_group_ids === undefined
+        ? trustedGroups.map((group) => group.query_group_id) : config.query_group_ids;
+      if (!Array.isArray(selectedIds) || selectedIds.length === 0
+        || selectedIds.some((id) => typeof id !== 'string')
+        || new Set(selectedIds).size !== selectedIds.length
+        || selectedIds.some((id) => !trustedGroups.some((group) => group.query_group_id === id))) return null;
+      const selectedQueryGroups = selectedIds.map((id) => {
+        const group = trustedGroups.find((entry) => entry.query_group_id === id)!;
+        return { query_group_id: group.query_group_id, query_group_name: group.query_group_name, queries: [...group.queries] };
+      });
+      const referenceDate = formatLocalReferenceDate(resolvedAt);
+      let range = resolveDesktopDatePolicy('TODAY_MINUS_24_CALENDAR_MONTHS_TO_YESTERDAY', referenceDate);
+      if (mode === 'EXPLICIT') {
+        const start = config.requested_date_start;
+        const end = config.requested_date_end;
+        if (typeof start !== 'string' || typeof end !== 'string'
+          || ![start, end].every((date) => /^\d{4}-\d{2}-\d{2}$/u.test(date)
+            && !Number.isNaN(Date.parse(`${date}T00:00:00.000Z`))
+            && new Date(`${date}T00:00:00.000Z`).toISOString().slice(0, 10) === date)
+          || start > end) return null;
+        range = { ...range, requested_date_start: start, requested_date_end: end };
       }
-
-      const selectedQueryGroups =
-        (
-          this.dependencies
-            .google_trends_query_groups
-          ?? []
-        ).map(
-          (group) => ({
-            query_group_id:
-              group.query_group_id,
-            query_group_name:
-              group.query_group_name,
-            queries: [
-              ...group.queries,
-            ],
-          }),
-        );
-
-      if (
-        selectedQueryGroups.length === 0
-      ) {
-        return null;
-      }
-
-
-      const referenceDate =
-        formatLocalReferenceDate(
-          resolvedAt,
-        );
-
-      const range =
-        resolveDesktopDatePolicy(
-          'TODAY_MINUS_24_CALENDAR_MONTHS_TO_YESTERDAY',
-          referenceDate,
-        );
 
       const reusableConfiguration =
         cloneConfiguration(

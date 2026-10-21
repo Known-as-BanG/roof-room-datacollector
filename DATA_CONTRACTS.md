@@ -342,6 +342,16 @@ exact `Tüm kategoriler` as the verified Turkish equivalent of requested All Cat
 (`All categories` provider label); geography/query/date/value checks remain strict.
 Unknown preamble or temporal labels and unverified category equivalents fail closed.
 
+The desktop Interest Over Time task accepts configured `query_group_ids` only;
+names and terms resolve from trusted configuration, never renderer query text.
+Omitted IDs select all configured groups. Omitted `date_mode` retains the existing
+rolling 24-calendar-month policy; `EXPLICIT` requires valid ordered ISO dates and
+cannot also specify a rolling policy. Review freezes the selected groups, terms
+and exact requested range. Start rechecks that scope at the Review resolution
+time, including when source task IDs were cleared but the root reviewed task
+still identifies Google Trends. Invalid, unknown, duplicate or altered selections
+fail before reservation. Requested dates remain distinct from observed bucket starts.
+
 ### Google Search Console
 
 Keep `QUERY` and `QUERY_PAGE` contracts distinct.
@@ -695,12 +705,37 @@ alias). Failed/cancelled Job and unavailable raw evidence counts reflect the who
 Run in both export modes. Missing optional normalization never counts as missing
 raw evidence. Accepted `NO_DATA` and `LOW_DATA` files remain actual delivered files
 and are counted separately. Successful filesystem publication is distinct from
-collection completeness: a terminal Run with unavailable evidence or a status other
+collection completeness: a Run with unavailable evidence or a status other
 than completed/completed-with-warnings is incomplete; accepted empty/low-data or
 persisted completion warnings remain warnings. Legacy results without raw counts
 display their count as unavailable, rather than reporting a fabricated zero.
 
-General desktop export still requires a terminal Run. New raw companions are
+General desktop export accepts terminal Runs and stable `RETRY_REQUIRED` Runs
+with at least one completed Job whose accepted raw Artifact has actual
+`VALID`/`LOW_DATA`/`NO_DATA` Validation provenance. Partial export requires settled
+Jobs and Attempts, no active execution owner, and the production raw loader.
+It never changes Run, Job, Attempt, Artifact or Validation state. Pending, running,
+manual-action and unsettled retry work remain ineligible for partial export.
+
+Export captures Run/Job/Attempt/Artifact/Validation records before asynchronous
+file loading and rejects changed evidence afterward. The desktop excludes
+same-Run retry/resume/continue/cancel and concurrent export while exporting, then
+rechecks the captured Run/Jobs before publication. Package construction uses the
+captured records and verified in-memory raw bytes. Both modes retain every Job's
+actual status and Attempt links/errors in `RAW_EVIDENCE.json`; failed/missing Jobs
+receive no fabricated file or normalized row. `SUCCESSFUL_ONLY` may omit the legacy
+`FAILURES.json` entries but never the raw index's Job history or failure counts.
+
+Manifest and raw index carry `collection_status`; every partial export is
+`INCOMPLETE`, independently of mode, and retains `run_status: RETRY_REQUIRED` in
+the manifest. Partial snapshots also carry a deterministic `snapshot_id` derived
+from captured persisted evidence records and use
+`exports/partial/<snapshot_id>/<all|successful_only>`. The same snapshot/mode
+refuses overwrite; later histories use distinct destinations without modifying
+published snapshots. Terminal destinations remain `exports/<all|successful_only>`.
+Specialized Blog/package eligibility remains unchanged.
+
+Raw companions are
 published through private staging, exclusive file creation, copy hash/size readback,
 reservation and rename. Unsafe paths/symlinks and existing output targets are
 rejected. Failure before commit removes staging; reservation cleanup failure after

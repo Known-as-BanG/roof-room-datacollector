@@ -625,17 +625,14 @@ async function main() {
     'Reviewed artifact contract must remain compatible with real single-source task/source identity.',
   );
 
-  const {
-    included_sources:
-      _missingIncludedSources,
-    ...withoutIncludedSources
-  } = {
+  const withoutIncludedSources = {
     ...multiSourceReviewedArtifact,
     task_id:
       'google-trends-quick-run',
     source_id:
       'google-trends',
   };
+  delete withoutIncludedSources.included_sources;
 
   assert.equal(
     isDesktopReviewedRunDraft(
@@ -2608,6 +2605,74 @@ async function main() {
     ],
     'Google Trends Job context must preserve comparison-group query membership.',
   );
+
+  const explicitTrendsDraft = JSON.parse(JSON.stringify(googleTrendsDraft));
+  explicitTrendsDraft.reusable_configuration.sources['google-trends'] = {
+    included: true, task_id: 'google-trends-interest-over-time', query_group_ids: ['GT01'],
+    date_mode: 'EXPLICIT', requested_date_start: '2024-08-20', requested_date_end: '2026-08-19',
+  };
+  const explicitTrendsReview = await googleTrendsController.reviewDraft(explicitTrendsDraft);
+  assert.equal(explicitTrendsReview.can_start, true);
+  assert.equal(explicitTrendsReview.job_count, 1, 'An explicitly selected GT01 must not expand to all configured groups.');
+  const explicitTrendsResolved = explicitTrendsReview.reviewed_draft.resolved_configuration;
+  assert.equal(explicitTrendsResolved.requested_date_start, '2024-08-20');
+  assert.equal(explicitTrendsResolved.requested_date_end, '2026-08-19');
+  assert.deepEqual(explicitTrendsResolved.selected_query_groups, [{ query_group_id: 'GT01', query_group_name: 'indoor_plants', queries: ['ficus', 'monstera'] }]);
+  googleTrendsClock = new Date('2026-10-20T10:00:00.000Z');
+  await googleTrendsController.startDraft(explicitTrendsReview.reviewed_draft);
+  const exactReservation = googleTrendsBase.reservations.at(-1);
+  assert.equal(exactReservation.job_plans.length, 1);
+  assert.equal(exactReservation.job_plans[0].query_group_id, 'GT01');
+  assert.deepEqual(exactReservation.job_plans[0].source_context.query_group.queries, ['ficus', 'monstera']);
+  assert.equal(exactReservation.configuration_snapshot.requested_date_start, '2024-08-20');
+  assert.equal(exactReservation.configuration_snapshot.requested_date_end, '2026-08-19');
+  console.log('PASS GT-SCOPE-001: exact selected trusted group and explicit dates survive Review and Start despite clock drift');
+
+  const rollingSelection = JSON.parse(JSON.stringify(googleTrendsDraft));
+  rollingSelection.reusable_configuration.sources['google-trends'].query_group_ids = ['GT02'];
+  const rollingSelectionReview = await googleTrendsController.reviewDraft(rollingSelection);
+  assert.equal(rollingSelectionReview.can_start, true);
+  assert.equal(rollingSelectionReview.job_count, 1);
+  assert.equal(rollingSelectionReview.reviewed_draft.resolved_configuration.requested_date_start, '2024-10-20');
+  assert.equal(rollingSelectionReview.reviewed_draft.resolved_configuration.requested_date_end, '2026-10-19');
+  assert.deepEqual(rollingSelectionReview.reviewed_draft.resolved_configuration.selected_query_groups.map((g) => g.query_group_id), ['GT02']);
+  console.log('PASS GT-SCOPE-002: selected groups retain ordinary rolling24M behavior');
+
+  for (const invalid of [
+    { query_group_ids: [] }, { query_group_ids: ['UNKNOWN'] }, { query_group_ids: ['GT01', 'GT01'] },
+    { query_group_ids: 'GT01' }, { query_group_ids: null }, { date_mode: null }, { requested_date_start: '2024-02-30' }, { requested_date_end: '2026-13-01' },
+    { requested_date_start: '2026-08-20' }, { requested_date_start: '' }, { date_mode: 'UNKNOWN' },
+    { date_policy: 'TODAY_MINUS_24_CALENDAR_MONTHS_TO_YESTERDAY' },
+  ]) {
+    const bad = JSON.parse(JSON.stringify(explicitTrendsDraft));
+    Object.assign(bad.reusable_configuration.sources['google-trends'], invalid);
+    const count = googleTrendsBase.reservations.length;
+    const rejected = await googleTrendsController.reviewDraft(bad);
+    assert.equal(rejected.can_start, false, JSON.stringify(invalid));
+    await assert.rejects(() => googleTrendsController.startDraft(bad));
+    assert.equal(googleTrendsBase.reservations.length, count);
+  }
+  const forged = JSON.parse(JSON.stringify(explicitTrendsReview.reviewed_draft));
+  forged.resolved_configuration.sources['google-trends'].query_groups[0].queries = ['forged provider query'];
+  const countBeforeForgery = googleTrendsBase.reservations.length;
+  await assert.rejects(() => googleTrendsController.startDraft(forged));
+  assert.equal(googleTrendsBase.reservations.length, countBeforeForgery);
+  const disguisedForgery = JSON.parse(JSON.stringify(forged));
+  disguisedForgery.task_id = null;
+  await assert.rejects(() => googleTrendsController.startDraft(disguisedForgery));
+  assert.equal(googleTrendsBase.reservations.length, countBeforeForgery);
+  const clearedSourceTaskIds = JSON.parse(JSON.stringify(forged));
+  delete clearedSourceTaskIds.reusable_configuration.sources['google-trends'].task_id;
+  delete clearedSourceTaskIds.resolved_configuration.sources['google-trends'].task_id;
+  assert.equal(clearedSourceTaskIds.task_id, 'google-trends-interest-over-time');
+  await assert.rejects(() => googleTrendsController.startDraft(clearedSourceTaskIds));
+  assert.equal(googleTrendsBase.reservations.length, countBeforeForgery,
+    'Clearing source task IDs must not bypass the root reviewed task scope.');
+  const badWithRawGroups = JSON.parse(JSON.stringify(explicitTrendsDraft));
+  badWithRawGroups.reusable_configuration.sources['google-trends'].query_group_ids = ['UNKNOWN'];
+  badWithRawGroups.reusable_configuration.sources['google-trends'].query_groups = [{query_group_id: 'UNKNOWN', queries: ['forged']}];
+  assert.equal((await googleTrendsController.reviewDraft(badWithRawGroups)).can_start, false);
+  console.log('PASS GT-SCOPE-003: invalid selections/dates/modes and forged reviewed queries fail before Run reservation');
 
   const { controller, reservations, executions } = createFixture();
   const createdPreset = controller.createPreset({

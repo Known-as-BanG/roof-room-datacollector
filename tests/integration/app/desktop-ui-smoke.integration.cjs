@@ -32,7 +32,10 @@ const bootstrapStatus = {
     config: {
       config_version: 1,
       source_id: 'google-trends',
-      groups: [],
+      groups: [
+        { query_group_id: 'GT01', query_group_name: 'indoor_plants', queries: ['ficus', 'monstera'] },
+        { query_group_id: 'GT02', query_group_name: 'plant_types', queries: ['ficus', 'sukulent'] },
+      ],
     },
   },
   source_registry: {
@@ -1258,7 +1261,7 @@ const main = async () => {
               ?.task_id
               === 'google-trends-interest-over-time'
             ) {
-              const selectedGroups = [
+              const trustedGroups = [
                 {
                   query_group_id:
                     'GT01',
@@ -1281,6 +1284,9 @@ const main = async () => {
                 },
               ];
 
+              const selectedGroups = trustedGroups.filter((group) => googleTrendsConfig.query_group_ids?.includes(group.query_group_id) ?? true);
+              const trendsStart = googleTrendsConfig.date_mode === 'EXPLICIT' ? googleTrendsConfig.requested_date_start : '2024-09-14';
+              const trendsEnd = googleTrendsConfig.date_mode === 'EXPLICIT' ? googleTrendsConfig.requested_date_end : '2026-09-13';
               const reviewedArtifact = {
                 workspace_id:
                   'ws_fixture',
@@ -1292,18 +1298,7 @@ const main = async () => {
                   '2026-09-14',
                 resolved_at:
                   '2026-09-14T09:30:00.000Z',
-                reusable_configuration: {
-                  sources: {
-                    'google-trends': {
-                      included:
-                        true,
-                      task_id:
-                        'google-trends-interest-over-time',
-                      date_policy:
-                        'TODAY_MINUS_24_CALENDAR_MONTHS_TO_YESTERDAY',
-                    },
-                  },
-                },
+                reusable_configuration: reviewDraft.reusable_configuration,
                 resolved_configuration: {
                   config_version:
                     1,
@@ -1316,9 +1311,9 @@ const main = async () => {
                   language_code:
                     null,
                   requested_date_start:
-                    '2024-09-14',
+                    trendsStart,
                   requested_date_end:
-                    '2026-09-13',
+                    trendsEnd,
                   category_id:
                     null,
                   category_name:
@@ -1335,6 +1330,7 @@ const main = async () => {
                     selectedGroups,
                   sources: {
                     'google-trends': {
+                      ...googleTrendsConfig,
                       included:
                         true,
                       task_id:
@@ -1342,9 +1338,9 @@ const main = async () => {
                       date_policy:
                         'TODAY_MINUS_24_CALENDAR_MONTHS_TO_YESTERDAY',
                       requested_date_start:
-                        '2024-09-14',
+                        trendsStart,
                       requested_date_end:
-                        '2026-09-13',
+                        trendsEnd,
                       query_groups:
                         selectedGroups,
                     },
@@ -1384,7 +1380,7 @@ const main = async () => {
                   },
                 ],
                 job_count:
-                  2,
+                  selectedGroups.length,
                 can_start:
                   true,
                 blocking_sources:
@@ -3990,6 +3986,38 @@ const main = async () => {
     await page.getByText('Raw evidence file count unavailable for this export', { exact: true }).waitFor();
     await page.getByText('Normalized dataset files: 2', { exact: true }).waitFor();
 
+    await page.evaluate(() => {
+      window.__terminalRunStateReader = window.roofroom.getDesktopRunState;
+      window.__partialCanExport = true;
+      window.roofroom.getDesktopRunState = async (id) => {
+        const state = await window.__terminalRunStateReader(id);
+        if (id === 'rr_fixture_history_001') {
+          state.run.run_status = 'RETRY_REQUIRED';
+          state.can_export = window.__partialCanExport;
+        }
+        return state;
+      };
+      window.__desktopExportResultOverride = { dataset_count: 1, raw_file_count: 1, normalized_file_count: 1,
+        failed_count: 4, unavailable_evidence_count: 4, collection_status: 'INCOMPLETE' };
+    });
+    await page.getByRole('button', { name: 'Back to Run History', exact: true }).click();
+    await page.getByRole('button', { name: /rr_fixture_history_001/ }).click();
+    assert.equal(await page.getByRole('button', { name: 'Export All', exact: true }).count(), 1,
+      'A stable RETRY_REQUIRED Run must expose privileged partial export eligibility.');
+    await page.getByText('Partial evidence export · Collection incomplete', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('button', { name: 'Build Blog Writing Pack', exact: true }).count(), 0,
+      'Partial general export must not expose terminal-only Blog package actions.');
+    await page.getByRole('button', { name: 'Export All', exact: true }).click();
+    await page.getByText('Raw evidence files: 1', { exact: true }).waitFor();
+    await page.getByText('Collection incomplete', { exact: true }).waitFor();
+    await page.evaluate(() => { window.__partialCanExport = false; });
+    await page.getByRole('button', { name: 'Back to Run History', exact: true }).click();
+    await page.getByRole('button', { name: /rr_fixture_history_001/ }).click();
+    assert.equal(await page.getByRole('button', { name: 'Export All', exact: true }).count(), 0,
+      'Active or ineligible partial Runs must not expose export controls.');
+    assert.equal(await page.getByRole('button', { name: 'Export Successful Only', exact: true }).count(), 0);
+    await page.evaluate(() => { window.roofroom.getDesktopRunState = window.__terminalRunStateReader; });
+
     await page.getByRole(
       'button',
       {
@@ -4964,6 +4992,17 @@ const main = async () => {
 
     await googleTrendsTaskCard.click();
 
+    const gt01Checkbox = page.getByRole('checkbox', { name: /^GT01/ });
+    const gt02Checkbox = page.getByRole('checkbox', { name: /^GT02/ });
+    assert.equal(await gt01Checkbox.isChecked(), true);
+    assert.equal(await gt02Checkbox.isChecked(), true);
+    assert.equal(await page.getByLabel('Trends date mode', { exact: true }).inputValue(), 'ROLLING');
+    await gt01Checkbox.uncheck();
+    await gt02Checkbox.uncheck();
+    assert.equal(await page.getByRole('button', { name: 'Review Quick Run', exact: true }).isDisabled(), true);
+    await gt01Checkbox.check();
+    await gt02Checkbox.check();
+
     const googleTrendsReviewButton =
       page.getByRole(
         'button',
@@ -5079,8 +5118,9 @@ const main = async () => {
           'google-trends-interest-over-time',
         date_policy:
           'TODAY_MINUS_24_CALENDAR_MONTHS_TO_YESTERDAY',
+        query_group_ids: ['GT01', 'GT02'],
       },
-      'Renderer must send task identity and relative date policy, not rebuild GT groups.',
+      'Renderer sends selected trusted IDs and relative policy without rebuilding query identities.',
     );
 
     assert.equal(
@@ -5132,7 +5172,7 @@ const main = async () => {
 
     assert.equal(
       await page.getByText(
-        'Fixed scope: Turkey · All Categories · Web Search · Search Term',
+        'Fixed scope: Türkiye · All Categories · Web Search · Search Term',
         {
           exact:
             true,
@@ -5141,6 +5181,24 @@ const main = async () => {
       1,
       'Google Trends Review must expose fixed provider semantics before Start.',
     );
+
+    await page.getByRole('button', { name: 'Back to Task', exact: true }).click();
+    await gt02Checkbox.uncheck();
+    await page.getByLabel('Trends date mode', { exact: true }).selectOption('EXPLICIT');
+    assert.equal(await googleTrendsReviewButton.isDisabled(), true);
+    await page.getByLabel('Trends requested start', { exact: true }).fill('2024-08-20');
+    await page.getByLabel('Trends requested end', { exact: true }).fill('2026-08-19');
+    await googleTrendsReviewButton.click();
+    await page.getByRole('heading', { name: 'Review Quick Run', exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.__reviewedDesktopDraft.reusable_configuration.sources['google-trends']), {
+      included: true, task_id: 'google-trends-interest-over-time', query_group_ids: ['GT01'],
+      date_mode: 'EXPLICIT', requested_date_start: '2024-08-20', requested_date_end: '2026-08-19',
+    });
+    await page.getByText('Query groups: GT01', { exact: true }).waitFor();
+    await page.getByText('GT01: ficus · monstera', { exact: true }).waitFor();
+    await page.getByText('Resolved range: 2024-08-20 → 2026-08-19', { exact: true }).waitFor();
+    assert.equal(await page.getByText('Configured groups: 1', { exact: true }).count(), 1);
+    console.log('PASS GT-UI-SCOPE: trusted group controls gate empty selections and explicit dates/terms appear in Review');
 
     const googleTrendsStartButton =
       page.getByRole(

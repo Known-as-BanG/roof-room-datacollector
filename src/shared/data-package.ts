@@ -39,6 +39,8 @@ export interface DataPackageManifest {
   successful_jobs: number;
   failed_jobs: number;
   mode: DataPackageMode;
+  collection_status?: 'COMPLETE' | 'COMPLETE_WITH_WARNINGS' | 'INCOMPLETE';
+  snapshot_id?: string;
 }
 
 export interface DataPackage {

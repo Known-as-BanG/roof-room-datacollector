@@ -128,6 +128,9 @@ export const buildDataPackage = (input: {
       successful_jobs: successfulJobs.length,
       failed_jobs: failedJobs.length,
       mode: input.mode,
+      collection_status: successfulJobs.length !== input.jobs.length || !['COMPLETED', 'COMPLETED_WITH_WARNINGS'].includes(input.run.run_status)
+        ? 'INCOMPLETE' : input.run.run_status === 'COMPLETED_WITH_WARNINGS' || successfulJobs.some((job) => job.validation_status !== 'VALID')
+          ? 'COMPLETE_WITH_WARNINGS' : 'COMPLETE',
     },
     datasets,
     failures,
@@ -250,6 +253,7 @@ const writeRawDataPackage = async (directory: string, dataPackage: DataPackage, 
     await writeKeywordPlannerUserExport(staging, dataPackage);
     await writeFile(path.join(staging, 'RAW_EVIDENCE.json'), `${JSON.stringify({ schema_version: 1,
       run_id: dataPackage.manifest.run_id, workspace_id: dataPackage.manifest.workspace_id,
+      collection_status: dataPackage.manifest.collection_status, snapshot_id: dataPackage.manifest.snapshot_id,
       context_representation: 'SANITIZED_COLLECTOR_METADATA', files, jobs: raw.jobs }, null, 2)}\n`, { flag: 'wx' });
     await assertAbsent(destination);
     await rename(staging, destination);
