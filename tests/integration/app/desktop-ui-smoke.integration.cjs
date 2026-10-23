@@ -3998,6 +3998,35 @@ const main = async () => {
     await page.getByText('Raw evidence file count unavailable for this export', { exact: true }).waitFor();
     await page.getByText('Normalized dataset files: 2', { exact: true }).waitFor();
 
+    await page.getByRole('button', { name: 'Back to Run History', exact: true }).click();
+    await page.getByRole('button', { name: /rr_fixture_cancel_001/ }).click();
+    assert.equal(await page.getByText('Export completed', { exact: true }).count(), 0,
+      'A different Run must not display the previous Run export counts or destination.');
+    await page.getByRole('button', { name: 'Back to Run History', exact: true }).click();
+    await page.getByRole('button', { name: /rr_fixture_history_001/ }).click();
+    await page.evaluate(() => {
+      const exportRun = window.roofroom.exportDesktopRun;
+      window.roofroom.exportDesktopRun = async (input) => {
+        await new Promise((resolve) => { window.__resolveDelayedExport = resolve; });
+        const result = await exportRun(input);
+        window.__delayedExportReturned = true;
+        return result;
+      };
+      window.__restoreExportRun = () => { window.roofroom.exportDesktopRun = exportRun; };
+    });
+    await page.getByRole('button', { name: 'Export All', exact: true }).click();
+    await page.waitForFunction(() => typeof window.__resolveDelayedExport === 'function');
+    await page.getByRole('button', { name: 'Back to Run History', exact: true }).click();
+    await page.evaluate(() => window.__resolveDelayedExport());
+    await page.waitForFunction(() => window.__delayedExportReturned === true);
+    await page.getByRole('button', { name: /rr_fixture_cancel_001/ }).click();
+    assert.equal(await page.getByText('Export completed', { exact: true }).count(), 0,
+      'An export finishing after navigation must remain bound to its original Run.');
+    await page.evaluate(() => window.__restoreExportRun());
+    await page.getByRole('button', { name: 'Back to Run History', exact: true }).click();
+    await page.getByRole('button', { name: /rr_fixture_history_001/ }).click();
+    console.log('PASS RUN-EXPORT-OWNERSHIP-UI-001: completed and delayed export summaries belong only to their Run');
+
     await page.evaluate(() => {
       window.__terminalRunStateReader = window.roofroom.getDesktopRunState;
       window.__partialCanExport = true;

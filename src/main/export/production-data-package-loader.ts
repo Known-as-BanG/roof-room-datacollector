@@ -37,6 +37,15 @@ import { normalizeRsaAssetPerformanceRows } from '../sources/google-ads/rsa-asse
 import { requireGoogleAdsReportingJobContext } from '../sources/google-ads/search-reporting-request';
 import { flattenGoogleAdsSearchStream } from '../sources/google-ads/search-stream-response';
 import { normalizeGoogleAdsChangeHistoryRows } from '../sources/google-ads/google-ads-change-history-adapter';
+import { GOOGLE_ADS_CONFIGURATION_SOURCE_ID } from '../../shared/google-ads-configuration';
+import { requireGoogleAdsConfigurationJobContext } from '../sources/google-ads/configuration-request';
+import { normalizeGoogleAdsConfigurationArtifact } from '../sources/google-ads/configuration-normalizer';
+import { GOOGLE_ANALYTICS_4_SOURCE_ID } from '../../shared/google-analytics-4';
+import { normalizeGoogleAnalytics4Rows } from '../sources/google-analytics-4/google-analytics-4-parser';
+import {
+  requireJobContext as requireGoogleAnalytics4JobContext,
+  requireRawBundle as requireGoogleAnalytics4RawBundle,
+} from '../sources/google-analytics-4/google-analytics-4-validator';
 
 const ACCEPTED_VALIDATION = new Set(['VALID', 'LOW_DATA', 'NO_DATA']);
 
@@ -432,6 +441,19 @@ export class ProductionDataPackageLoader {
       }
       case 'google-ads-search-terms':
         return { dataset_type: 'SEARCH_TERMS', rows: jsonRows(normalizeSearchTerms(decodeJson(bytes, 'Google Ads Search Terms accepted artifact'))) };
+      case GOOGLE_ANALYTICS_4_SOURCE_ID: {
+        const context = requireGoogleAnalytics4JobContext(job.source_context);
+        if (job.job_key !== context.dataset_type) {
+          throw new Error('GA4 Job key does not match the dataset.');
+        }
+        const { bundle } = requireGoogleAnalytics4RawBundle(
+          decodeJson(bytes, 'GA4 accepted artifact'), context,
+        );
+        return {
+          dataset_type: context.dataset_type,
+          rows: jsonRows(normalizeGoogleAnalytics4Rows(context.dataset_type, bundle).rows),
+        };
+      }
       case GOOGLE_ADS_CHANGE_HISTORY_SOURCE_ID: {
         const providerRows =
           flattenGoogleAdsSearchStream(
@@ -448,6 +470,18 @@ export class ProductionDataPackageLoader {
               providerRows,
             ),
           ),
+        };
+      }
+      case GOOGLE_ADS_CONFIGURATION_SOURCE_ID: {
+        const context = requireGoogleAdsConfigurationJobContext(job.source_context);
+        if (job.job_key !== context.dataset_type) {
+          throw new Error('Google Ads configuration Job key does not match the dataset.');
+        }
+        return {
+          dataset_type: context.dataset_type,
+          rows: jsonRows(normalizeGoogleAdsConfigurationArtifact(
+            context.dataset_type, decodeJson(bytes, 'Google Ads configuration accepted artifact'),
+          )),
         };
       }
       case GOOGLE_ADS_SEARCH_REPORTING_SOURCE_ID: {

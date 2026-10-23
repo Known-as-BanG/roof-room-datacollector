@@ -1,4 +1,5 @@
-import { lstat, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import * as path from 'node:path';
 import type { DataPackage, DataPackageDataset, DataPackageMode } from '../../shared/data-package';
@@ -202,6 +203,28 @@ const assertAbsent = async (filename: string): Promise<void> => {
     throw error;
   }
   throw new Error('Data Package export exists; refusing overwrite.');
+};
+
+export const resolveDataPackageExportDirectory = async (
+  parent: string, relativeDirectory: string, canonicalRuns: string,
+): Promise<string> => {
+  if (!path.isAbsolute(parent) || parent.includes('\0') || parent.split(path.sep).includes('..')
+    || path.resolve(parent) === path.parse(parent).root) throw new Error('Unsafe export destination parent.');
+  await assertNoSymlinkParents(parent);
+  if (!(await lstat(parent)).isDirectory()) throw new Error('Export destination parent must be an existing directory.');
+  await access(parent, constants.W_OK | constants.X_OK);
+  const selected = await realpath(parent);
+  const directory = path.resolve(selected, relativeDirectory);
+  const inside = (root: string, target: string): boolean => {
+    const relative = path.relative(root, target);
+    return relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+  };
+  const evidenceRoot = await realpath(canonicalRuns);
+  if (!inside(selected, directory) || directory === selected || inside(evidenceRoot, selected)
+    || inside(evidenceRoot, directory) || inside(directory, evidenceRoot)) {
+    throw new Error('Unsafe export destination: canonical Run evidence must remain protected.');
+  }
+  return directory;
 };
 
 const writeRawDataPackage = async (directory: string, dataPackage: DataPackage, raw: DataPackageRawEvidence): Promise<string> => {

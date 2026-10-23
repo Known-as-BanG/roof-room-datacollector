@@ -677,6 +677,16 @@ Indexes accepted source datasets separately and preserves exact Run/Job/source/a
 
 No cross-source row join is implied.
 
+The ordinary normalized loader includes both GA4 datasets (legacy Content v1,
+Content v2 and Paid Funnel) using the source-owned immutable-context/raw-bundle
+checks and normalizer. All fourteen Google Ads configuration snapshot datasets
+use their existing source-owned context checks and normalizers; targeting reads
+the preserved SearchStream/geo-resolver bundle, retaining observed location
+identity and names. Missing LOCATION resolver evidence fails normalization.
+Verified NO_DATA remains an empty dataset. No GA4 field, reporting window, currency
+or snapshot metric is inferred to fill absent provider observations. The raw-only
+fallback below remains independent of optional normalization.
+
 The primary general Collector export delivers collected provider evidence. It is
 independent of specialized Blog v2 field meanings, mandatory source families,
 marketing periods and analytical coverage. Historical approved Blog requirements

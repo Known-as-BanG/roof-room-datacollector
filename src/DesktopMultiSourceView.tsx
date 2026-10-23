@@ -1301,7 +1301,7 @@ export function DesktopMultiSourceView() {
         ReturnType<
           typeof window.roofroom.exportDesktopRun
         >
-      > | null
+      > & { run_id: string } | null
     >(
       null,
     );
@@ -2835,6 +2835,8 @@ export function DesktopMultiSourceView() {
         true,
       );
 
+      setExportResult(null);
+
       setMessage(
         null,
       );
@@ -2848,9 +2850,13 @@ export function DesktopMultiSourceView() {
               mode,
             });
 
-        setExportResult(
-          result,
-        );
+        if (result === null) {
+          setMessage('Export cancelled. No files were exported.');
+        } else {
+          setExportResult(
+            { ...result, run_id: activeRunState.run.run_id },
+          );
+        }
       } catch (error) {
         setMessage(
           error instanceof Error
@@ -6456,6 +6462,7 @@ export function DesktopMultiSourceView() {
                   )}
 
                 {exportResult !== null
+                  && exportResult.run_id === activeRunState.run.run_id
                   && (
                     <div role="status" aria-live="polite">
                       <p>Export completed</p>

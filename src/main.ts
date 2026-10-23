@@ -60,6 +60,7 @@ import { DesktopExecutionService } from './main/app/desktop-execution-service';
 import { createProductionCollectionRuntime } from './main/app/production-collection-runtime';
 import { StructuredLogger } from './main/logging/structured-logger';
 import { DesktopMultiSourceController } from './main/app/desktop-multisource-controller';
+import { createDesktopRunExportHandler } from './main/app/desktop-run-export-ipc';
 import { createDesktopWorkspaceConnectionsHandler } from './main/app/desktop-connection-ipc';
 import { createDesktopConnectionWriteHandlers } from './main/app/desktop-connection-write-ipc';
 import { createGoogleProviderConfigurationHandlers } from './main/app/google-provider-configuration-ipc';
@@ -898,13 +899,12 @@ const registerIpcHandlers = (
       );
     },
   );
-  ipcMain.handle(IPC_CHANNELS.DESKTOP_EXPORT, (event, input: unknown) => {
-    assertTrustedIpcSender(event);
-    if (typeof input !== 'object' || input === null) throw new Error('Export input must be an object.');
-    const value = input as { run_id?: unknown; mode?: unknown };
-    if (typeof value.run_id !== 'string' || (value.mode !== 'ALL' && value.mode !== 'SUCCESSFUL_ONLY')) throw new Error('Export input is invalid.');
-    return requireDesktopController().exportRun(value.run_id, value.mode);
-  });
+  ipcMain.handle(IPC_CHANNELS.DESKTOP_EXPORT, createDesktopRunExportHandler({
+    assertTrustedSender: assertTrustedIpcSender,
+    getController: requireDesktopController,
+    windowForSender: (sender) => BrowserWindow.fromWebContents(sender),
+    dialog,
+  }));
 };
 
 const createWindow = (): void => {

@@ -31,7 +31,7 @@ import {
   formatLocalReferenceDate,
   resolveDesktopDatePolicy,
 } from '../../shared/desktop-run-resolution';
-import { buildDataPackage, writeDataPackage, type DataPackageInputDataset, type DataPackageRawEvidence } from '../export/data-package-exporter';
+import { buildDataPackage, resolveDataPackageExportDirectory, writeDataPackage, type DataPackageInputDataset, type DataPackageRawEvidence } from '../export/data-package-exporter';
 import type { DataPackage, DataPackageMode, DesktopDataPackageExportResult } from '../../shared/data-package';
 import type { WorkspaceFreshnessResult } from '../../shared/freshness';
 import type { ArtifactRecord } from '../../shared/artifact';
@@ -2397,7 +2397,9 @@ export class DesktopMultiSourceController {
     return buildDataPackage({ run: state.run, jobs: state.jobs, datasets, mode });
   }
 
-  async exportRun(run_id: string, mode: DataPackageMode): Promise<DesktopDataPackageExportResult> {
+  async exportRun(run_id: string, mode: DataPackageMode): Promise<DesktopDataPackageExportResult>;
+  async exportRun(run_id: string, mode: DataPackageMode, select_parent: () => Promise<string | null>): Promise<DesktopDataPackageExportResult | null>;
+  async exportRun(run_id: string, mode: DataPackageMode, select_parent?: () => Promise<string | null>): Promise<DesktopDataPackageExportResult | null> {
     if (!this.dependencies.package_directory) throw new Error('Data Package export is unavailable.');
     if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(run_id) || !['ALL', 'SUCCESSFUL_ONLY'].includes(mode)) throw new Error('Unsafe Data Package export path or mode.');
     this.assertNotExporting(run_id);
@@ -2409,8 +2411,14 @@ export class DesktopMultiSourceController {
     }
     const partial = run.run_status === 'RETRY_REQUIRED';
     if (partial && !this.dependencies.load_export) throw new Error('Partial export requires verified raw evidence and a stable snapshot.');
+    if (select_parent && !this.dependencies.load_export) throw new Error('Native Run export requires verified raw evidence and provenance.');
     this.exportingRuns.add(run_id);
     try {
+      // Desktop IPC always supplies native selection; internal legacy callers retain their storage root.
+      const parent = select_parent ? await select_parent() : undefined;
+      if (parent === null) return null;
+      const exportRoot = parent === undefined ? `${this.dependencies.package_directory}/${run_id}/exports`
+        : await resolveDataPackageExportDirectory(parent, `${run_id}/exports`, this.dependencies.package_directory);
       const loaded = this.dependencies.load_export ? await this.dependencies.load_export(run_id) : undefined;
       if (!loaded && !this.dependencies.load_datasets) throw new Error('Data Package dataset loading is unavailable.');
       const datasets = loaded?.datasets ?? await this.dependencies.load_datasets!(run_id);
@@ -2425,7 +2433,7 @@ export class DesktopMultiSourceController {
       const dataPackage = buildDataPackage({ run, jobs, datasets, mode });
       if (partial) dataPackage.manifest.snapshot_id = loaded!.snapshot!.snapshot_id;
       const destination = partial ? `partial/${dataPackage.manifest.snapshot_id}/${mode.toLowerCase()}` : mode.toLowerCase();
-      const directory = `${this.dependencies.package_directory}/${run_id}/exports/${destination}`;
+      const directory = `${exportRoot}/${destination}`;
       await writeDataPackage(directory, dataPackage, loaded?.raw);
       const result: DesktopDataPackageExportResult = {
         export_directory: directory,

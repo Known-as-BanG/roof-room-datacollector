@@ -20,11 +20,13 @@ scope before publishing; do not silently include unrelated pending commits.
 
 **Current capability truth:** general exports are already Run-bound and preserve
 accepted raw evidence plus manifests/provenance, with truthful stable partial
-snapshots. Their current destination is application-owned Run export storage;
-the native export-time destination-parent picker is **not implemented**. GA4
-Content v1/v2 and Paid Funnel acquisition/normalization exist; local export
-integration and Ads configuration follow-ups remain WIP. Prior deterministic and
-synthetic packaged receipts do not establish expanded live acquisition. İkas is
+snapshots. Native export-time destination-parent selection is now implemented and
+deterministically verified; actual macOS/packaged picker acceptance
+remains pending. Each export writes the selected Run's existing export layout
+beneath its chosen parent, with cancellation producing no delivery. GA4
+Content v1/v2 and Paid Funnel acquisition/normalization exist; ordinary normalized
+export integration is implemented and deterministically verified. Prior
+deterministic and synthetic packaged receipts do not establish expanded live acquisition. İkas is
 XLSX FILE_IMPORT; direct API is desired feasibility work. Semrush remains future
 scope/feasibility. Trends is controlled browser/provider-CSV acquisition, not an
 official API. GT01 partial delivery and KWP01's single live Run are bounded prior
@@ -35,10 +37,10 @@ acceptance is established by specialized JSON access tests.
 **Development priorities:**
 
 1. Preserve the real branch/worktree and implemented/verified/unverified distinctions.
-2. Implement the approved per-invocation general export parent-directory picker
-   through existing privileged desktop mechanisms: cancellation creates nothing,
-   each selected Run gets its own child, no silent overwrite, original evidence
-   stays protected. Product contract: `PROJECT_SPEC.md`; focused checks: `TEST_STRATEGY.md`.
+2. Separately verify the implemented native export picker in an isolated macOS
+   desktop build containing this change: cancellation creates no delivery, each
+   selected Run gets its own child, overwrite is refused and evidence stays intact.
+   No packaging/runtime or production-export acceptance is claimed by local tests.
 3. Separately authorize bounded real collection → accepted raw evidence → Run
    export acceptance. A Blog Run and an Ads Run deliver separate folders; general
    export never automatically combines unrelated Runs.
@@ -58,6 +60,53 @@ ChatGPT uploads. Users manually import exported files into ChatGPT Projects.
 The documentation-only reconciliation changes no runtime behavior and grants no
 live-provider, production export, credential, Keychain or packaging authorization.
 Commit/push authority here covers only this task's documentation, not existing WIP.
+
+## Normalized Run delivery — recorded verification boundary
+
+A normal signed arm64 build and isolated actual renderer verified 2 GA4 + 14
+configuration raw/normalized files, all byte-identical to accepted Artifacts,
+overwrite refusal and normal Quit exit 0. Acquisition used mocked Node fixtures;
+this does not establish packaged/live provider acquisition. That check discovered
+P1-12: a previous Run's export summary appeared on a newly selected Run. The
+renderer now binds its receipt to the originating Run; focused completed/delayed
+response navigation RED/GREEN and static checks pass. The final normal signed arm64
+package contains the fix and has byte-identical main code. Its actual startup/
+renderer confirmation is BLOCKED: native accessibility and a bounded localhost
+probe timed out; a two-second sample shows its main thread waiting in macOS
+Security/Keychain decryption (`SecItemCopyMatching` / `SecurityServer::decrypt`).
+Do not claim a provider failure or bypass the credential boundary. Credential-
+dependent continuation is explicitly left pending at the user's request.
+This earlier synthetic package acceptance predates the destination-picker change.
+
+## Run export destination — deterministic checkpoint
+
+General desktop Export All / Successful Only now validates the trusted intent and
+persisted Run before opening an owner-window native parent-directory dialog.
+Cancellation returns no receipt; errors clear stale success. Safe destinations
+reuse `<parent>/<run_id>/exports/<mode>` and existing partial snapshot subpaths.
+The existing raw writer retains staging, non-overwrite, byte readback/provenance
+checks and cleanup. Native export requires verified raw provenance; internal
+legacy normalized-only export remains compatible. Canonical Run storage is not
+an allowed native delivery destination. No source/package readiness rules changed.
+
+Recorded Node 24.19.0 focused verification (before Git delivery):
+
+- `bash tests/integration/app/run-run-export-destination-test.sh`: 9/9 PASS.
+- Same command with `ui`: 3 rendered UI markers PASS against the real controller,
+  IPC handler and writer, with the native dialog stubbed; localhost permission was
+  required by the sandbox. The preload bridge is exercised in integration.
+- `bash tests/integration/export/run-general-raw-evidence-export-test.sh`: 18/18 PASS.
+- `bash tests/integration/export/run-data-package-exporter-test.sh`: 8 PASS markers.
+- TypeScript, targeted production/test lint and Bash syntax checks pass.
+
+Real native/packaged QA remains pending. In a separately prepared build containing
+this change, use verified disposable QA state and prepared synthetic completed and
+stable partial Runs. Cancel an export, then select a temporary destination for each
+mode and two separate Runs. Verify actual child folders, truthful partial/warning
+status and matching raw sizes/SHA-256/provenance. Repeat a destination to confirm
+refusal without changes; test an inaccessible parent. Confirm source files and
+Attempt history are unchanged. Do not use production state or live providers.
+No new general-export Open/Reveal behavior or acceptance is claimed.
 
 ## Preserved implementation checkpoint
 

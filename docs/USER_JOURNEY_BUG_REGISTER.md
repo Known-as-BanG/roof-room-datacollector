@@ -493,6 +493,32 @@ Status: OPEN
 
 ## Newly discovered issues
 
+### P1-11 — Existing GA4 and Ads configuration had no normalized general delivery
+
+Status: DETERMINISTICALLY AND SYNTHETIC PACKAGED-EXPORT VERIFIED (2026-10-22)
+
+Reproduction: acquire accepted GA4 Content/Paid Funnel or any existing Ads
+configuration snapshot, then Export All. Native raw evidence was delivered but
+the missing loader registrations yielded no normalized dataset. The loader now
+uses existing source-owned context/bundle checks and normalizers. Configuration
+targeting retains its separate SearchStream/geo resolver parts; no fields or
+windows are invented. The 18-case general raw-export suite covers persisted
+Review/Start/acquisition/validation/reopen/export, null/zero, NO_DATA, legacy GA4,
+scope mismatches, raw identity/integrity and overwrite refusal. Actual packaged
+renderer/IPC export verified 2 GA4 and 14 configuration datasets with exact raw
+bytes in an isolated synthetic Workspace. No live-provider acceptance is implied.
+
+### P1-12 — Export summary from one Run remained visible on another Run
+
+Status: DETERMINISTICALLY VERIFIED (2026-10-22)
+
+Reproduction in the isolated package: export the GA4 Run, open the configuration
+Run, observe the old GA4 counts/destination beneath the new Run's Jobs. Expected:
+an export receipt belongs only to the Run exported. The renderer now retains the
+originating Run ID with its local receipt and displays it only on that Run.
+`RUN-EXPORT-OWNERSHIP-UI-001` reproduces the original failure and verifies completed
+and delayed export results after navigation.
+
 For every new user-journey issue record:
 - reproduction path
 - observed behavior

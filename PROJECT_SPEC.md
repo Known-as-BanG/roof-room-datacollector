@@ -322,16 +322,16 @@ an otherwise eligible general accepted-raw export. Actual acceptance, identity,
 byte integrity and export eligibility remain mandatory; partial/warning/failure
 outcomes must stay truthful. Specialized packages retain their own stricter rules.
 
-**Approved target — export-time destination selection (not implemented):** on
+**General Run export destination selection:** on
 every general Run export invocation, ask for a destination parent directory and
 create an identifiable Run-specific child inside it. Cancelling creates no export.
 Do not silently overwrite existing output. Preserve original application-owned
 evidence and historical Attempts; verify paths/integrity/provenance behind the
 privileged boundary. Report the actual exported location and collection/export
 status, including partial, warning, missing-evidence and failure outcomes.
-The current application-owned export root is not evidence of this picker. Its
-implementation and verification are the next general Collector delivery slice;
-`TEST_STRATEGY.md` defines the focused acceptance boundary.
+Application-owned export storage alone does not satisfy native destination
+selection. `TEST_STRATEGY.md` defines the focused acceptance boundary;
+`PROJECT_HANDOFF.md` records implementation and verification status.
 
 ### Task Packages
 

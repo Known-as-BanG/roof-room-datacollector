@@ -20,6 +20,187 @@ const controllerFor = (f, overrides = {}) => {
     load_export: (id) => f.loader.loadRunExport(id), ...overrides });
 };
 
+test('GA4 Content and Paid Funnel complete Review, acquisition, validation, reopen and normalized/raw export', async (t) => {
+  const f = await fixture(t, { ga4: true });
+  const originalRun = f.repository.getRun(f.run_id), originalJobs = f.repository.listJobs(f.run_id);
+  assert.equal(originalRun.run_status, 'COMPLETED');
+  assert.equal(originalJobs.length, 2);
+  assert.equal(f.ga4Responses.length, 2);
+  const result = await f.controller.exportRun(f.run_id, 'ALL');
+  assert.equal(result.normalized_file_count, 2, 'Both existing GA4 datasets must be delivered as normalized evidence');
+  assert.equal(result.raw_file_count, 2);
+  assert.equal(result.collection_status, 'COMPLETE');
+  const index = JSON.parse(fs.readFileSync(path.join(result.export_directory, 'DATASETS.json')));
+  const raw = JSON.parse(fs.readFileSync(path.join(result.export_directory, 'RAW_EVIDENCE.json')));
+  assert.equal(index.length, 2);
+  for (const job of originalJobs) {
+    assert.equal(job.execution_status, 'COMPLETED');
+    assert.equal(job.validation_status, 'VALID');
+    assert.equal(job.source_context.property_id, '123456789');
+    const attempts = f.repository.listAttempts(job.job_id);
+    assert.equal(attempts.length, 1);
+    const artifact = f.repository.getArtifact(job.accepted_artifact_id);
+    const bytes = fs.readFileSync(f.storage.resolveRunRelativePath(f.run_id, artifact.relative_path));
+    const entry = index.find((d) => d.job_id === job.job_id);
+    const rawEntry = raw.files.find((d) => d.job_id === job.job_id);
+    assert.equal(rawEntry.normalization_status, 'AVAILABLE');
+    assert.equal(entry.dataset_type, job.source_context.dataset_type);
+    assert.equal(entry.provenance.attempt_id, attempts[0].attempt_id);
+    assert.equal(entry.provenance.validation_id, attempts[0].validation_id);
+    assert.equal(entry.provenance.raw_artifact_id, artifact.artifact_id);
+    assert.equal(entry.provenance.raw_artifact_sha256, sha(bytes));
+    assert.deepEqual(fs.readFileSync(path.join(result.export_directory, rawEntry.relative_path)), bytes);
+    const content = entry.dataset_type === 'GA4_CONTENT_PERFORMANCE';
+    const bundle = JSON.parse(bytes);
+    assert.deepEqual(JSON.parse(bundle.pages[0].raw_body_text), f.ga4Responses.find((r) => r.content === content).body);
+    const rows = JSON.parse(fs.readFileSync(path.join(result.export_directory, entry.filename)));
+    assert.equal(rows.length, content ? 2 : 1, 'Every returned row must survive');
+    assert.equal(rows[0].sessions, 0);
+    assert.equal(rows[0].add_to_carts, null);
+    if (content) {
+      assert.deepEqual(rows.map((r) => r.landing_page), ['(not set)', '/plants']);
+      assert.equal(rows[0].total_users, 17);
+      assert.equal(rows[0].active_users, 7);
+      assert.equal(rows[0].user_engagement_duration, 12.5);
+    } else {
+      assert.equal(rows[0].performance_date, '2026-09-01');
+      assert.equal(rows[0].session_source, 'google');
+      assert.equal(rows[0].session_medium, 'cpc');
+      assert.equal(rows[0].session_campaign_name, '(not set)');
+    }
+  }
+  await assert.rejects(f.controller.exportRun(f.run_id, 'ALL'), /exist|overwrite/i);
+  assert.deepEqual(f.repository.getRun(f.run_id), originalRun);
+  assert.deepEqual(f.repository.listJobs(f.run_id), originalJobs);
+});
+
+test('verified GA4 NO_DATA exports empty datasets and original raw bundles without invented rows', async (t) => {
+  const f = await fixture(t, { ga4: true, empty: true });
+  assert.equal(f.repository.getRun(f.run_id).run_status, 'COMPLETED_WITH_WARNINGS');
+  assert.ok(f.jobs.every((j) => j.validation_status === 'NO_DATA'));
+  const result = await f.controller.exportRun(f.run_id, 'ALL');
+  assert.equal(result.normalized_file_count, 2);
+  const index = JSON.parse(fs.readFileSync(path.join(result.export_directory, 'DATASETS.json')));
+  for (const entry of index) {
+    assert.equal(entry.row_count, 0);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(result.export_directory, entry.filename))), []);
+    assert.equal(entry.provenance.validation_status, 'NO_DATA');
+  }
+  assert.equal(result.raw_file_count, 2);
+});
+
+test('GA4 legacy Content stays readable and normalization rejects a mismatched property, window or dataset', async (t) => {
+  const f = await fixture(t, { ga4: true });
+  const { ProductionDataPackageLoader } = load('main/export/production-data-package-loader.js');
+  const job = f.jobs.find((j) => j.job_key === 'GA4_CONTENT_PERFORMANCE');
+  const legacy = require('../blog-writing-packs/blog-v2-ga4-fixture.cjs').bundle();
+  const stored = await f.storage.persistRawArtifact({ run_id: f.run_id, source_id: job.source_id,
+    attempt_number: 1, preferred_filename: 'legacy-content.json', media_type: 'application/json',
+    bytes: Buffer.from(JSON.stringify(legacy)) });
+  const artifact = { ...f.repository.getArtifact(job.accepted_artifact_id), ...stored };
+  const loader = new ProductionDataPackageLoader({ getRun: (id) => f.repository.getRun(id),
+    listJobs: () => [job], getArtifact: () => artifact }, f.storage);
+  const dataset = await loader.loadAcceptedJobDataset(f.run_id, job.job_id);
+  assert.equal(dataset.rows[0].active_users, 7);
+  assert.equal(dataset.rows[0].sessions, 0);
+  assert.equal(Object.hasOwn(dataset.rows[0], 'total_users'), false, 'Legacy capability must not be invented');
+  const originalContext = structuredClone(job.source_context);
+  for (const change of [
+    { property_id: '999999999' }, { start_date: '2026-08-01' }, { dataset_type: 'GA4_PAID_FUNNEL' },
+  ]) {
+    job.source_context = { ...originalContext, ...change };
+    await assert.rejects(loader.loadAcceptedJobDataset(f.run_id, job.job_id), /property|dates|immutable|dataset|session filter/i);
+  }
+  job.source_context = originalContext;
+  job.job_key = 'WRONG';
+  await assert.rejects(loader.loadAcceptedJobDataset(f.run_id, job.job_id), /Job key/);
+});
+
+test('all 14 Ads configuration snapshots export normalized evidence including exact geo bundle observations', async (t) => {
+  const f = await fixture(t, { ads_configuration: true });
+  const run = f.repository.getRun(f.run_id), jobs = f.repository.listJobs(f.run_id);
+  assert.equal(jobs.length, 14);
+  assert.equal(f.adsResponses.length, 14);
+  assert.equal(run.run_status, 'COMPLETED_WITH_WARNINGS');
+  assert.ok(jobs.every((j) => j.execution_status === 'COMPLETED'), JSON.stringify(jobs));
+  const result = await f.controller.exportRun(f.run_id, 'ALL');
+  assert.equal(result.normalized_file_count, 14, 'All implemented configuration datasets need ordinary normalized delivery');
+  assert.equal(result.raw_file_count, 14);
+  assert.equal(result.normalization_unavailable_count, 0);
+  const index = JSON.parse(fs.readFileSync(path.join(result.export_directory, 'DATASETS.json')));
+  const raw = JSON.parse(fs.readFileSync(path.join(result.export_directory, 'RAW_EVIDENCE.json')));
+  const output = new Map();
+  for (const job of jobs) {
+    assert.equal(Object.hasOwn(job.source_context, 'requested_date_start'), false, 'Snapshots must not invent reporting windows');
+    const attempts = f.repository.listAttempts(job.job_id);
+    assert.equal(attempts.length, 1);
+    const artifact = f.repository.getArtifact(job.accepted_artifact_id);
+    const bytes = fs.readFileSync(f.storage.resolveRunRelativePath(f.run_id, artifact.relative_path));
+    const entry = index.find((e) => e.job_id === job.job_id);
+    const rawEntry = raw.files.find((e) => e.job_id === job.job_id);
+    const rows = JSON.parse(fs.readFileSync(path.join(result.export_directory, entry.filename)));
+    output.set(entry.dataset_type, rows);
+    assert.equal(entry.dataset_type, job.job_key);
+    assert.equal(entry.provenance.attempt_id, attempts[0].attempt_id);
+    assert.equal(entry.provenance.validation_id, attempts[0].validation_id);
+    assert.equal(entry.provenance.raw_artifact_id, artifact.artifact_id);
+    assert.equal(entry.provenance.raw_artifact_sha256, sha(bytes));
+    assert.deepEqual(fs.readFileSync(path.join(result.export_directory, rawEntry.relative_path)), bytes);
+    const body = f.adsResponses.find((r) => r.dataset_type === job.job_key).body;
+    if (job.job_key === 'CAMPAIGN_TARGETING_CRITERIA') {
+      const parts = JSON.parse(bytes).parts;
+      assert.deepEqual(JSON.parse(Buffer.from(parts[0].raw_body_base64, 'base64')), body);
+      assert.deepEqual(JSON.parse(Buffer.from(parts[1].raw_body_base64, 'base64')),
+        require('./ads-configuration-export-fixture.cjs').geo);
+    } else assert.deepEqual(JSON.parse(bytes), body);
+    if (job.validation_status === 'NO_DATA') assert.deepEqual(rows, [], 'Verified empty snapshots stay empty');
+  }
+  assert.equal(output.get('CAMPAIGN_NEGATIVE_KEYWORDS')[0].keyword_text, 'free');
+  assert.equal(output.get('CAMPAIGN_NEGATIVE_KEYWORDS')[0].campaign_criterion_status, 'REMOVED');
+  assert.equal(output.get('CONVERSION_ACTIONS')[0].default_value, 0);
+  assert.equal(output.get('CONVERSION_ACTIONS')[0].always_use_default_value, false);
+  assert.equal(output.get('CUSTOMER_CONVERSION_GOALS')[0].biddable, false);
+  assert.equal(output.get('CUSTOMER_CONVERSION_TRACKING_SETTINGS')[0].conversion_tracking_id, null);
+  assert.equal(output.get('CUSTOMER_CONVERSION_TRACKING_SETTINGS')[0].conversion_tracking_status, 'NOT_CONVERSION_TRACKED');
+  assert.equal(output.get('CAMPAIGN_BUDGETS')[0].amount_micros, '0');
+  assert.equal(output.get('CAMPAIGN_BUDGETS')[0].explicitly_shared, false);
+  const location = output.get('CAMPAIGN_TARGETING_CRITERIA')[0];
+  assert.equal(location.location_geo_target_constant_name, 'Turkey');
+  assert.equal(location.location_geo_target_constant_country_code, 'TR');
+  assert.equal(location.location_geo_target_constant_resource_name, 'geoTargetConstants/2392');
+  await assert.rejects(f.controller.exportRun(f.run_id, 'ALL'), /exist|overwrite/i);
+  assert.deepEqual(f.repository.getRun(f.run_id), run);
+  assert.deepEqual(f.repository.listJobs(f.run_id), jobs);
+});
+
+test('configuration normalization rejects missing or mismatched location resolver evidence', () => {
+  const { normalizeGoogleAdsConfigurationArtifact } = load('main/sources/google-ads/configuration-normalizer.js');
+  const { buildGoogleAdsCampaignTargetingEvidenceBundleBytes } = load('main/sources/google-ads/campaign-settings-adapter.js');
+  const provider = require('./ads-configuration-export-fixture.cjs');
+  const bytes = buildGoogleAdsCampaignTargetingEvidenceBundleBytes({
+    search_stream_raw_bytes: Buffer.from(JSON.stringify([{ results: provider.rows.CAMPAIGN_TARGETING_CRITERIA }])),
+    geo_target_suggestions: { requested_resource_names: ['geoTargetConstants/2392'], raw_bytes: Buffer.from(JSON.stringify(provider.geo)) },
+  });
+  const valid = JSON.parse(Buffer.from(bytes).toString('utf8')), missingResolver = structuredClone(valid);
+  missingResolver.parts.pop();
+  assert.throws(() => normalizeGoogleAdsConfigurationArtifact('CAMPAIGN_TARGETING_CRITERIA', missingResolver),
+    /resolver evidence is missing/, 'LOCATION normalization requires the actual provider resolver evidence');
+  const wrongScope = structuredClone(valid);
+  wrongScope.parts[1].requested_resource_names = ['geoTargetConstants/9999'];
+  assert.throws(() => normalizeGoogleAdsConfigurationArtifact('CAMPAIGN_TARGETING_CRITERIA', wrongScope), /scope/);
+  const wrongIdentity = structuredClone(valid), geo = structuredClone(provider.geo);
+  geo.geoTargetConstantSuggestions[0].geoTargetConstant.id = '9999';
+  wrongIdentity.parts[1].raw_body_base64 = Buffer.from(JSON.stringify(geo)).toString('base64');
+  assert.throws(() => normalizeGoogleAdsConfigurationArtifact('CAMPAIGN_TARGETING_CRITERIA', wrongIdentity), /resourceName.*id/);
+  for (const response of [{}, { geoTargetConstantSuggestions: [null] },
+    { geoTargetConstantSuggestions: [{ geoTargetConstant: null }] },
+    { geoTargetConstantSuggestions: [{ geoTargetConstant: { ...provider.geo.geoTargetConstantSuggestions[0].geoTargetConstant, countryCode: '' } }] }]) {
+    const malformed = structuredClone(valid);
+    malformed.parts[1].raw_body_base64 = Buffer.from(JSON.stringify(response)).toString('base64');
+    assert.throws(() => normalizeGoogleAdsConfigurationArtifact('CAMPAIGN_TARGETING_CRITERIA', malformed), /invalid|required/);
+  }
+});
+
 test('stable RETRY_REQUIRED exports accepted evidence in both modes with complete histories and immutable snapshots', async (t) => {
   const f = await fixture(t, { mixed: true, partial: true });
   const run = f.repository.getRun(f.run_id), jobs = f.repository.listJobs(f.run_id);

@@ -58,6 +58,67 @@ module.exports = async (buildRoot, workRoot, t, options = {}) => {
       return Response.json(API_BODY);
     };
   }
+  const ga4Responses = [];
+  if (options.ga4) {
+    repository.upsertSourceConnection({ workspace_id: workspace.workspace_id, source_id: 'google-analytics-4',
+      credential_ref: 'synthetic-google', safe_metadata: { property_id: '123456789' } });
+    draft.reusable_configuration = { sources: { 'google-analytics-4': { included: true,
+      property_id: '123456789', start_date: '2026-09-01', end_date: '2026-09-28',
+      datasets: ['GA4_CONTENT_PERFORMANCE', 'GA4_PAID_FUNNEL'] } } };
+    const originalFetch = globalThis.fetch; t.after(() => { globalThis.fetch = originalFetch; });
+    globalThis.fetch = async (url, request) => {
+      if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'synthetic-token', expires_in: 3600 });
+      assert.equal(url, 'https://analyticsdata.googleapis.com/v1beta/properties/123456789:runReport',
+        'Unexpected URL must never reach a live provider');
+      const input = JSON.parse(request.body);
+      assert.deepEqual(input.dateRanges, [{ startDate: '2026-09-01', endDate: '2026-09-28' }]);
+      assert.equal(input.offset, 0);
+      const content = input.dimensions[0].name === 'landingPage';
+      if (!content) assert.ok(input.dimensionFilter, 'Paid Funnel must request its locked session filter');
+      const values = { activeUsers: '7', totalUsers: '17', sessions: '0', engagedSessions: '0',
+        engagementRate: '0', keyEvents: '2', itemViewEvents: '0', addToCarts: '', checkouts: '0',
+        ecommercePurchases: '0', transactions: '0', purchaseRevenue: '0', userEngagementDuration: '12.5', totalPurchasers: '0' };
+      const body = { dimensionHeaders: input.dimensions,
+        metricHeaders: input.metrics.map(({ name }) => ({ name, type: name === 'purchaseRevenue' ? 'TYPE_CURRENCY'
+          : name === 'userEngagementDuration' ? 'TYPE_SECONDS' : ['engagementRate', 'keyEvents'].includes(name) ? 'TYPE_FLOAT' : 'TYPE_INTEGER' })),
+        rows: options.empty ? [] : (content ? ['(not set)', '/plants'] : ['/plants']).map((landingPage) => ({
+          dimensionValues: content ? [{ value: landingPage }] : ['20260901', 'google', 'cpc', '101', '(not set)', landingPage, 'mobile'].map((value) => ({ value })),
+          metricValues: input.metrics.map(({ name }) => ({ value: values[name] })),
+        })), rowCount: options.empty ? 0 : content ? 2 : 1,
+        metadata: { currencyCode: 'TRY', timeZone: 'Europe/Istanbul' } };
+      ga4Responses.push({ content, body });
+      return Response.json(body);
+    };
+  }
+  const adsResponses = [];
+  if (options.ads_configuration) {
+    const { GOOGLE_ADS_CONFIGURATION_DATASET_TYPES } = load('shared/google-ads-configuration.js');
+    const { GOOGLE_ADS_CONFIGURATION_DATASET_DESCRIPTORS } = load('main/sources/google-ads/configuration-source.js');
+    const { createGoogleAdsConfigurationJobContext } = load('main/sources/google-ads/configuration-request.js');
+    const provider = require('./ads-configuration-export-fixture.cjs');
+    repository.upsertSourceConnection({ workspace_id: workspace.workspace_id, source_id: 'google-ads-search-terms',
+      credential_ref: 'synthetic-google', safe_metadata: { customer_id: '1234567890' } });
+    draft.reusable_configuration = { sources: { 'google-ads-configuration': { included: true,
+      customer_id: '1234567890', datasets: GOOGLE_ADS_CONFIGURATION_DATASET_TYPES } } };
+    const originalFetch = globalThis.fetch; t.after(() => { globalThis.fetch = originalFetch; });
+    globalThis.fetch = async (url, request) => {
+      if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'synthetic-token', expires_in: 3600 });
+      const input = JSON.parse(request.body);
+      if (url.endsWith('/geoTargetConstants:suggest')) {
+        assert.deepEqual(input.geoTargets, { geoTargetConstants: ['geoTargetConstants/2392'] });
+        return Response.json(provider.geo);
+      }
+      assert.match(url, /^https:\/\/googleads\.googleapis\.com\/v\d+\/customers\/1234567890\/googleAds:searchStream$/,
+        'Unexpected URL must never reach a live provider');
+      const matches = GOOGLE_ADS_CONFIGURATION_DATASET_DESCRIPTORS.filter((d) => input.query === d.buildQuery(
+        createGoogleAdsConfigurationJobContext({ dataset_type: d.dataset_type, customer_id: '1234567890' })));
+      assert.equal(matches.length, 1, 'Acquisition must use an exact registered dataset query');
+      const datasetType = matches[0].dataset_type;
+      const body = [{ results: provider.rows[datasetType] ?? [] }];
+      adsResponses.push({ dataset_type: datasetType, body });
+      return Response.json(body);
+    };
+  }
   let started;
   if (options.low_data) {
     const queryGroup = { query_group_id: 'GT01', query_group_name: 'generic_commercial',
@@ -78,7 +139,7 @@ module.exports = async (buildRoot, workRoot, t, options = {}) => {
     : options.empty ? Buffer.from('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"/>') : XML;
   const runtime = createProductionCollectionRuntime({ repository, directories,
     credentialStore: { readCredential: async () => {
-      if (options.multi_source) return JSON.stringify({ client_id: 'synthetic-client', refresh_token: 'synthetic-refresh' });
+      if (options.multi_source || options.ga4 || options.ads_configuration) return JSON.stringify({ client_id: 'synthetic-client', refresh_token: 'synthetic-refresh' });
       throw new Error('No credentials needed');
     } },
     bitkimarkFetcher: async (url) => ({ ok: !options.failed && !url.endsWith('pages.xml'),
@@ -105,6 +166,6 @@ module.exports = async (buildRoot, workRoot, t, options = {}) => {
   const artifact = job && repository.getArtifact(job.accepted_artifact_id);
   const rawPath = artifact && storage.resolveRunRelativePath(started.run.run_id, artifact.relative_path);
   const metadataPath = job && path.join(directories.runs, started.run.run_id, SOURCE, 'metadata', `${job.job_key}.metadata.json`);
-  return { root, directories, repository, storage, loader, controller, workspace, run_id: started.run.run_id, jobs, job, artifact, rawPath, metadataPath, bytes, expectedRaw };
+  return { root, directories, repository, storage, loader, controller, workspace, run_id: started.run.run_id, jobs, job, artifact, rawPath, metadataPath, bytes, expectedRaw, ga4Responses, adsResponses };
 
 };

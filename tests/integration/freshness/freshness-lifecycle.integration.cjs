@@ -190,6 +190,8 @@ test('FRESHNESS-DESKTOP-001: desktop cards expose freshness separately and DUE d
   const repository = new StateRepository(getDatabasePath(directories));
   t.after(() => repository.close());
   const workspace = repository.createWorkspace({ workspace_name: 'Fresh desktop' });
+  repository.upsertSourceConnection({ workspace_id: workspace.workspace_id, source_id: 'google-search-console-query-page',
+    credential_ref: 'synthetic-google', safe_metadata: { site_url: 'sc-domain:example.test' } });
   const freshness = new FreshnessRegistry(repository, () => new Date(NOW));
   freshness.register('serpapi', () => ({ kind: 'ON_DEMAND' }));
   freshness.register('ikas-products', (context) => resolveConfiguredIntervalPolicy(context.source_config, { kind: 'MANUAL_IMPORT' }));
@@ -216,6 +218,7 @@ test('FRESHNESS-DESKTOP-001: desktop cards expose freshness separately and DUE d
       'google-search-console-query-page': {
         included: true,
         task_id: 'gsc-current-90-days',
+        site_url: 'sc-domain:example.test',
         date_policy: 'TODAY_MINUS_90_TO_YESTERDAY',
         freshness_policy: { kind: 'INTERVAL', fresh_for_hours: 24, stale_after_hours: 72 },
       },
@@ -226,4 +229,8 @@ test('FRESHNESS-DESKTOP-001: desktop cards expose freshness separately and DUE d
   assert.equal(gscCard.readiness_status, 'READY');
   assert.equal(gscCard.freshness_status, 'DUE');
   assert.equal(review.can_start, true, 'DUE freshness is informative and must not block a ready explicit Run.');
+  assert.equal(review.job_count, 1);
+  draft.reusable_configuration.sources['google-search-console-query-page'].site_url = 'sc-domain:other.test';
+  assert.equal((await controller.reviewDraft(draft)).can_start, false,
+    'Informative freshness must never bypass canonical property binding.');
 });

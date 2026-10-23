@@ -244,9 +244,8 @@ Where affected, prove:
 
 Prove accepted-only loading, source separation, integrity/provenance, no raw mutation.
 
-For the approved general Run export destination picker, verification is future
-work until the actual boundary is implemented. Focused deterministic IPC/filesystem
-and renderer checks must prove:
+For general Run export destination selection, focused deterministic
+IPC/filesystem and renderer checks must prove:
 
 - Each export invocation opens destination-parent selection; cancellation creates
   no output and retains no misleading success or previous-Run receipt.

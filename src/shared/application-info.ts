@@ -194,7 +194,7 @@ export interface RoofRoomApi {
     run_id: string;
     job_id: string;
   }) => Promise<void>;
-  exportDesktopRun: (input: { run_id: string; mode: 'ALL' | 'SUCCESSFUL_ONLY' }) => Promise<DesktopDataPackageExportResult>;
+  exportDesktopRun: (input: { run_id: string; mode: 'ALL' | 'SUCCESSFUL_ONLY' }) => Promise<DesktopDataPackageExportResult | null>;
   selectDesktopInputFile: (
     input: DesktopInputFileSelectionRequest,
   ) => Promise<DesktopInputFileSelectionResult>;
