@@ -1,665 +1,121 @@
 # RoofRoom Data Collector — Project Handoff
 
-**Checkpoint date:** 2026-10-20 (isolated packaged raw-export acceptance and prior readiness reconciliation, uncommitted)
-**Current branch:** `feat/google-analytics-4-source-v1`
-**Implementation checkpoint:** committed baseline `16e7487bd86d401157f96eca2558d87cac59b54d`. The focused uncommitted reconciliation removes obsolete product-decision blockers for Ads reporting duration, Planner historical duration and already-validated SERP organic-position/search-profile semantics. Calendar, provider-evidence, query-coverage and integrity checks remain. The committed development checkpoint is recorded in `docs/superpowers/plans/2026-10-19-development-checkpoint.md`.
-**Repository state:** prior WIP and private `reports/` are preserved. Explicitly property-bound 28-day GSC Query × Page collections now preserve a separate final/date response and observed receipt in native Attempt metadata. New drafts freeze its integrity reference; source-owned coverage inspection requires every returned date and keeps sparse Query × Page observations separate. Complete date coverage never clears the existing `gsc_finality` publication blocker. Canonical semantics are in `DATA_CONTRACTS.md`, Google Search Console → Query × Page finality evidence boundary; execution detail and exact changed files are in the existing Ads/GSC compliance plan.
-**Primary Collector delivery:** the general desktop export uses `loadRunExport`, preserving existing normalized files plus exact accepted raw files and `RAW_EVIDENCE.json`. The desktop result/UI now lead with actual raw files, separately reporting optional normalized files, failed/cancelled Jobs, unavailable evidence, accepted NO_DATA/LOW_DATA and destination. Export success stays distinct from collection completeness; SUCCESSFUL_ONLY retains whole-Run failure counts and legacy results do not fabricate raw counts. The expanded real SQLite/native-runtime/loader/controller suite passed 10/10: mocked Sitemap XML (177 bytes), official GSC API JSON (194 bytes), native İkas XLSX import (605 bytes), genuine Trends LOW_DATA CSV, failure/NO_DATA/raw-only outcomes, provenance/integrity and existing safety checks. Input, persisted artifact and exported bytes/SHA-256 match for all three native representations. Renderer smoke, existing loader/exporter/desktop export and v1 compatibility gates, TypeScript and targeted lint passed. Execution details are in `docs/superpowers/plans/2026-10-20-desktop-raw-export-completion.md`; packaged acceptance is separately recorded below; live-provider acceptance remains unverified.
-**Isolated packaged acceptance:** the early QA hook and guarded launcher passed 5/5 safety tests, including 20 invalid configurations and stale-package rejection before spawn. Ordinary launch paths remain unchanged. Existing Forge/ad-hoc packaging and signature verification passed. The actual packaged Electron 43.4.0 app loaded its file renderer, returned real IPC, initialized isolated schema-8 SQLite with quick_check ok, and completed four real UI export cases: mixed XML/API JSON/XLSX in both modes plus separate NO_DATA XML and LOW_DATA CSV. All eight raw copies match five native accepted artifacts in bytes/hash/provenance; UI counts, incomplete/warning status, destination and overwrite refusal were verified. Fixtures were collected/validated in compiled Node code before packaged launch; packaged provider acquisition is not established. Exact commands, hashes, QA-root evidence and limitations are in `docs/superpowers/plans/2026-10-20-isolated-packaged-acceptance.md`. General-export open/reveal is not verified; provider/credential/release acceptance remains separate.
-**Current deterministic verification:** readiness 11/11, SERP compliance 33/33, JSON publication 59/59, field compliance 13/13, Planner compliance 14/14 and GA4 compliance 29/29 passed. Native SERP, v1 assembler/store, TypeScript, targeted TypeScript/CommonJS lint and diff checks passed. A fixed accepted-evidence fixture through the actual evaluator changes current-profile draft/publication blocker counts from 40/45 to 36/41; explicit-profile counts change from 22/27 to 20/25. Only the obsolete conditions disappear; all other blocker reasons are unchanged and overall readiness stays PARTIAL. Valid bound Ads evidence now satisfies its family under the current profile with explicit endpoints; the same evidence at a later publication date still fails its calendar window. No live-provider, full-policy publication or complete delivery acceptance is established.
-**Current action:** preserve the isolated packaged runtime/export evidence; real provider acquisition and credential workflows remain unverified and require separate scope. Existing output targets are refused rather than overwritten. For specialized Blog v2 delivery, resolve how GSC's latest eligible 28-day interval is proved at actual publication creation; historical complete date evidence does not establish it. Supported desktop Query × Page Jobs now require and freeze an explicit property; taskless legacy Jobs retain compatibility without fabricated property observations or date proof. Query × Page row completeness is not guaranteed. Planner and other mandatory source gaps remain independently blocked. Actual Blog source-policy publication remains blocked; successful Blog JSON delivery status remains INCOMPLETE.
-
----
-
-## 1. Purpose
-
-This file records only the latest verified repository state, material open acceptance boundaries, closed areas, and the next safe action.
-
-It is the router for current work, not a historical changelog.
-
-For stable product, architecture, contracts, validation, testing, or historical rationale, use the authority table below.
-
----
-
-## 2. Repository state
-
-Authoritative repository:
-
-```text
-/Users/furkan/Projects/roofroom-data-collector
-```
-
-Observed current state:
-
-    branch:                     feat/google-analytics-4-source-v1
-    production implementation:  P2-02 conversion-date reporting checkpoint
-
-The Conversion Configuration production implementation is committed. The focused Conversion Configuration gate and this canonical documentation update form the slice-closing checkpoint that contains this handoff revision.
-
-Observed implementation checkpoints on this branch:
-
-- `09f7bfc` — define the six-dataset Conversion Configuration contract and exact GAQL;
-- `6404296` — normalize the six provider-native resources;
-- `f032c54` — collect the six datasets through the existing configuration source;
-- `b0dbd78` — validate conversion configuration and tracking-settings cardinality;
-- `e473870` — verify production registration of the full configuration family and existing connection reuse.
-
-Local and remote feature/fix branches used by the completed work were cleaned up after their relevant commits or patch-equivalent changes were integrated.
-
----
-
-## 3. Current product state
-
-Release 1.0 local multi-source Collector implementation is complete.
-
-The application now includes:
-
-- Workspace-owned Runs;
-- source-keyed multi-source Jobs;
-- immutable Attempt history;
-- resume, reconciliation, explicit retry, cancellation where safely supported;
-- schema-v8 persistence;
-- Saved Collection Presets and Last Run Settings;
-- Workspace source connections and safe readiness state;
-- source-neutral freshness evaluation;
-- secure credential boundaries and packaged connection/remediation flows;
-- accepted-evidence access;
-- generalized Production Data Package export;
-- post-R1 desktop UX/operations hardening;
-- Google Ads SEARCH reporting family;
-- Google Ads configuration Negatives v1 and Conversion Configuration v1 snapshot family;
-- `ADS_OPTIMIZATION_PACK v2` with historical v1 read compatibility;
-- `BLOG_WRITING_PACK v1`.
-
-Google Trends remains the reference browser-export source, not the generic Core model.
-
----
-
-## 4. Current persisted baseline
-
-Current SQLite schema version:
-
-```text
-8
-```
-
-Implemented tables:
-
-```text
-schema_migrations
-workspaces
-runs
-jobs
-attempts
-artifacts
-validations
-saved_collection_presets
-workspace_last_run_settings
-workspace_source_connections
-```
-
-Important current contracts:
-
-- every Run belongs to exactly one Workspace;
-- one Workspace may have at most one active Run in `PENDING`, `RUNNING`, or `MANUAL_ACTION_REQUIRED`;
-- `RETRY_REQUIRED` is non-terminal but does not occupy the active slot;
-- retry reacquisition, Job transition, and next Attempt creation are atomic;
-- a Job is identified within a Run by `source_id + job_key`;
-- `query_group_id` is nullable and Google-Trends/legacy-specific;
-- non-Google-Trends Jobs never fabricate query groups;
-- freshness is derived from accepted completed Job history rather than a freshness cache;
-- credential secrets remain outside SQLite behind the privileged credential boundary.
-
-Exact persisted contracts belong in `DATA_CONTRACTS.md`.
-
----
-
-## 5. Source and dataset state
-
-### Release 1.0 source paths
-
-Local implementation is complete for the approved R1 source paths:
-
-- Google Trends Interest Over Time;
-- Google Search Console;
-- legacy Google Ads Search Terms;
-- Google Ads Keyword Planner API;
-- Keyword Planner manual CSV;
-- İkas Products XLSX;
-- Bitkimark sitemap/XML;
-- SerpApi on-demand SERP.
-
-### Later completed expansions
-
-Also implemented:
-
-- GSC query-only `QUERY` datasets and Query × Page `QUERY_PAGE` datasets;
-- adjacent Current/Previous 28-day GSC query Jobs;
-- GSC Query × Page 28-day, 90-day, and long-window reviewed tasks;
-- six-dataset `google-ads-search-reporting` SEARCH family:
-  - `CAMPAIGN_PERFORMANCE`
-  - `AD_GROUP_PERFORMANCE`
-  - `KEYWORD_PERFORMANCE`
-  - `SEARCH_TERMS`
-  - `AD_PERFORMANCE`
-  - `RSA_ASSET_PERFORMANCE`
-- reporting schema v2 remains the default; the separate Conversion-Date Performance task explicitly acquires three schema-v3 datasets; historical schema v1 evidence remains readable but not reacquirable;
-- schema v2 Campaign/Ad Group/Keyword reporting preserves conversion-efficiency metrics plus Search Top/Absolute Top impression share as distinct provider-native fields;
-- eleven-dataset `google-ads-configuration` snapshot family composed of:
-  - Negatives v1:
-    - `CAMPAIGN_NEGATIVE_KEYWORDS`
-    - `AD_GROUP_NEGATIVE_KEYWORDS`
-    - `SHARED_NEGATIVE_KEYWORDS`
-    - `CAMPAIGN_NEGATIVE_KEYWORD_LISTS`
-    - `ACCOUNT_NEGATIVE_KEYWORD_LISTS`
-  - Conversion Configuration v1:
-    - `CONVERSION_ACTIONS`
-    - `CUSTOMER_CONVERSION_GOALS`
-    - `CONVERSION_GOAL_CAMPAIGN_CONFIGS`
-    - `CAMPAIGN_CONVERSION_GOALS`
-    - `CUSTOM_CONVERSION_GOALS`
-    - `CUSTOMER_CONVERSION_TRACKING_SETTINGS`
-- immutable configuration schema-v1 Job context with no requested date window;
-- provider-native Conversion Configuration normalization preserving null, real false/zero values, lifecycle/status evidence, ownership, and custom-goal membership without requested-to-observed fabrication;
-- tracking-settings validation requiring exactly one normalized customer row, including valid `NOT_CONVERSION_TRACKED` evidence;
-- deterministic Keyword Planner 3-month and YoY derived change fields from accepted monthly history;
-- `ADS_OPTIMIZATION_PACK v2`;
-- `BLOG_WRITING_PACK v1`.
-
-Performance Max remains outside the approved Google Ads reporting contract.
-
----
-
-## 6. Current credential and connection boundary
-
-Current production credential behavior includes:
-
-- shared Google OAuth application configuration behind the main/Core boundary;
-- Workspace/account metadata kept separate from secret material;
-- OAuth refresh credentials behind the credential store;
-- SerpApi API-key storage behind the same privileged security boundary;
-- main-owned native macOS masked secret ingress;
-- safe renderer-visible connection/readiness states only.
-
-The Google Ads Developer Token is retired from active application behavior. Legacy persisted fields may remain readable only for backward compatibility.
-
-The full Google Ads configuration family, including Negatives v1 and Conversion Configuration v1, reuses the existing Workspace Google Ads connection keyed by the legacy Search Terms source. It does not create a separate configuration-source credential or Workspace connection record.
-
-Do not reintroduce Developer Token setup as a current requirement without a new approved contract.
-
----
-
-## 7. Current package boundaries
-
-### Production Data Package
-
-The generic Production Data Package consumes accepted evidence and keeps source datasets separate.
-
-It does not perform cross-source analysis.
-
-### `ADS_OPTIMIZATION_PACK v2`
-
-A source-neutral Task Package layer above accepted evidence.
-
-It:
-
-- requires the six approved Google Ads SEARCH reporting datasets at dataset schema v2;
-- uses exact compatible accepted evidence;
-- rejects historical schema v1 evidence as CURRENT or PREVIOUS input for the active v2 recipe while preserving historical v1 readability;
-- may deterministically filter broader DAILY evidence only by real `performance_date` rows;
-- never reconstructs, interpolates, allocates, averages, or infers unavailable source evidence;
-- does not own provider acquisition or retry;
-- preserves immutable package provenance.
-
-The desktop Review/Start/Open workflow is deterministically implemented.
-
-Expanded live acceptance for the six-dataset reporting family remains separate from deterministic completion.
-
-### `BLOG_WRITING_PACK v1`
-
-Latest verified implementation checkpoint: `33f4734`, followed by validated repair commits and the current documentation checkpoint.
-
-The Blog package:
-
-- is a thin single-Run specialization over Production Data Package;
-- has a fixed seven-family recipe;
-- records truthful COMPLETE/PARTIAL/MISSING/verified-NO_DATA coverage;
-- excludes out-of-recipe evidence before loading;
-- preserves Keyword Planner API/manual provenance separately;
-- publishes immutable `BLOG_PACKAGE.json` and `BLOG_WRITING_PACK.xlsx`;
-- builds/opens/reveals locally without provider acquisition, retry, new Attempts, Run/Job mutation, or schema migration.
-
-Fresh deterministic verification and packaged arm64 acceptance passed. No live provider request was made for this slice.
-
-### `BLOG_WRITING_PACK v2` JSON-only publication
-
-The approved 2026-10-18 contract is canonical in `DATA_CONTRACTS.md`. The additive
-programmatic publisher stages verified raw/acquisition bytes, samples creation
-time, reevaluates actual readiness and atomically commits verified JSON only when
-all mandatory checks pass. Every selected member's identity/integrity remains
-required, including optional Trends. No replacement evidence, cached verdict,
-workbook or desktop publication flow is introduced. Planner's unknown calendar
-context and GSC's unestablished finality are explicit publication blockers; earlier
-field/coverage blockers remain. Execution and verification are recorded in
-`docs/superpowers/plans/2026-10-18-blog-writing-pack-v2-json-publication.md`.
-
-### `BLOG_WRITING_PACK v2` draft membership
-
-The 2026-10-17 approved delivery requirements and explicit resolutions of older
-slice-era assumptions are canonical in `DATA_CONTRACTS.md`. These approvals do
-not establish source support or provider acceptance. The slice summaries below
-describe the implementation checkpoints. The subsequent GA4 metric/property-window
-follow-ups change only GA4 metrics/validation/inspection and its requirements
-defaults; other conservative blockers remain effective in the publication path above.
-
-The implementation adds a version-specific selection resolver and draft assembler
-above existing accepted evidence. Assembly revalidates exact Run/Job/Attempt/
-Validation/Artifact identity, Workspace ownership, and raw artifact integrity.
-`BlogWritingPackStore.saveDraft/readDraft` persists fixed multi-Run membership in
-`BLOG_DRAFT.json`, with `state: DRAFT` and `readiness_status: NOT_EVALUATED`.
-The existing v1 publication/open paths do not accept drafts as delivery packages.
-
-No SQLite migration, Core lifecycle change, normalized row export, workbook,
-desktop v2 build flow, final coverage evaluation, or live acceptance is included.
-The additive disk contract is in `DATA_CONTRACTS.md`; the focused execution record
-is `docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-draft-membership.md`.
-
-Slice 3B.1 adds an in-memory evaluator against the existing stored draft. It
-revalidates exact frozen evidence through Slice 1, checks seven mandatory families
-and explicitly supplied GSC requested endpoints, and reports decision/source-change
-blockers. Coverage is restricted to explicit supported checks; delivery remains
-NOT_EVALUATED. The supplied current real requirements profile remains blocked.
-It changes no draft bytes, membership rules, source acquisition, or v1 behavior.
-The execution record is `docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-readiness.md`.
-
-Slice 3B.2A adds actual Ads/GSC source-field presence and normalization checks
-through the verified accepted-artifact loader. Read-only field summaries distinguish
-observed values, compatible nulls, absent fields and empty evidence; no row data
-is persisted. Ads has no inferred reporting window; explicit approved endpoints
-are required. GSC reuses the exact 28-day endpoint validation, with page → page_url
-and position → average_position downstream aliases. The other five mandatory
-families remain explicitly unresolved even if a caller clears decision lists.
-Frozen drafts, source verdicts and v1 remain unchanged. This slice includes no
-live, packaged, publication or production-data acceptance. Execution record:
-`docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-ads-gsc-compliance.md`.
-
-Slice 3B.2B.1 adds source-backed Keyword Planner API/manual CSV field inspection
-through the same evaluator and accepted-artifact seam. Provider-observed identity,
-raw presence, history, currency units and competition category/index stay distinct.
-The evaluator requires explicit Blog scope rather than inheriting acquisition
-constraints; the new Blog contract independently approves 12 completed months.
-API currency, manual structured request scope and Blog keyword completeness remain
-explicit blockers; no acquisition change or real-data acceptance is included.
-Execution record: `docs/superpowers/plans/2026-10-15-blog-writing-pack-v2-keyword-planner-compliance.md`.
-
-Slice 3B.2B.2 adds accepted İkas workbook inspection and mapped-column metadata
-without changing existing normalized rows or import acquisition. Product-group
-identity, variant granularity and observed name/URL remain intact; category,
-product price/availability, stock/lifecycle status, currency and freshness gaps
-remain explicit. No URLs, product states, prices or timestamps are reconstructed.
-Keyword Planner compliance is included in the same checkpoint. Execution record:
-`docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-ikas-compliance.md`.
-
-Slice 3B.2B.3 adds Sitemap URL field inspection above unchanged XML acquisition
-and parsing. URL sets establish observed loc values; indexes retain child-document
-identity without implying webpage inventory. Page type, title and per-page HTTP
-status remain explicit source gaps; document HTTP success/lastmod are not reused
-as page observations. Site completeness remains a decision even for one Job.
-KWP/İkas compliance is included in the same checkpoint. Execution record:
-`docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-sitemap-compliance.md`.
-
-Slice 3B.2B.4 adds accepted SERP field inspection using the unchanged parser and
-request contract. Query is a request dimension verified against provider q;
-positions remain organic-only, PAA rows stay separate and domain is explicitly
-derived from observed link. Follow-ups derive capture_date only from verified
-collector receipt and replace capture/freshness decision messages with mandatory
-draft-time evidence/age checks. Other scope blockers remain, including exact query
-coverage. No lifecycle, requested or provider date can substitute for receipt.
-No real-provider or delivery acceptance is included.
-The acquisition follow-up captures receipt after full response-body acquisition
-and before decoding/parsing, using existing acquisition_metadata and immutable
-Attempt-scoped metadata files. Accepted loading validates bindings; v2 membership
-freezes optional serp_acquisition with timestamp, collector origin and metadata
-hash/path/size. Frozen legacy acquired_at still copies artifact.created_at; missing
-receipt evidence is never reconstructed. Controlled synthetic runtime verifies
-distinct failed/retry Attempt provenance, delayed artifact registration, accepted
-loading and draft reload. Draft creation remains membership-only; readiness uses
-draft.created_at by default or explicit evaluated_at for SERP reevaluation, without
-changing GA4's reference. Derived counts distinguish capture dates from provider
-observations. Fresh/stale checks preserve membership and source acceptance.
-The additive v2 JSON publisher above independently checks freshness at package
-creation; draft-time tests alone do not prove package-time expiry.
-Execution record: `docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-serp-compliance.md`.
-
-Slice 3B.2B.5 checks actual GA4 Content Performance bundles with existing source
-validation/normalization. landingPage paths and native sessions/engagement/key-event
-observations are preserved. `(not set)` stays raw/normalized provider text but does
-not count as an identified landing page; placeholder-only or mixed sets retain an
-explicit observation blocker. The metric-completion follow-up adds Content raw
-bundle v2 with totalUsers and userEngagementDuration; native total_users and
-user_engagement_duration stay separate from active_users and the inspector's
-users alias / derived seconds-per-session. Missing inputs or nonpositive sessions
-produce null with explicit reasons; malformed numbers fail closed. Legacy v1 keeps
-its native row shape and explicit metric gaps. Header/version and normalized row-
-count validation fail closed; 250,001-row pagination and both old/new placeholder
-behavior are deterministically covered. Property/window follow-up now validates
-explicit frozen property and all supplied response timezone observations, derives
-last-28-completed-day endpoints at draft.created_at and reports per-Job expected-
-window provenance. Missing/invalid/conflicting metadata, cross-Job property/timezone
-conflicts and wrong windows remain explicit blockers; legacy context is not repaired.
-Independent coverage and provider acceptance remain open. Execution record:
-`docs/superpowers/plans/2026-10-16-blog-writing-pack-v2-ga4-compliance.md`.
-
----
-
-## 8. Verification and live-evidence boundaries
-
-Current evidence includes deterministic release-gate success across the implemented Core/source/package surface and successful local arm64 packaging.
-
-Previously recorded real/live acceptance includes bounded evidence for:
-
-- Google Trends;
-- Google Search Console;
-- Bitkimark root sitemap;
-- real İkas workbook parsing;
-- real Keyword Planner manual CSV;
-- a bounded Keyword Planner official-API run;
-- the legacy Google Ads `search_term_view` SEARCH proof.
-
-SerpApi secure provisioning has packaged human-observed acceptance, but credential provisioning is not provider collection acceptance.
-
-The expanded six-dataset Google Ads SEARCH reporting family is deterministically complete; live acceptance for the additional resources remains a separate explicitly authorized step.
-
-Google Ads configuration Negatives v1 remains deterministically verified across its five dataset contracts.
-
-Conversion Configuration v1 is implemented and deterministically verified across its six dataset/resource contracts, exact GAQL, provider-native normalization, raw SearchStream acquisition, fail-closed semantic validation, five-dataset verified `NO_DATA` behavior, exactly-one-row tracking-settings cardinality, production registration, existing Ads connection reuse, and snapshot-specific capability behavior.
-
-The focused Conversion Configuration gate passed with `PASS GOOGLE-ADS-CONVERSION-CONFIGURATION-GATE-001`. The Negatives gate, production source-composition test, and Google Ads SEARCH reporting gate also passed after the conversion changes, without live-provider calls. `npx tsc --noEmit` passed.
-
-The literal nested-worktree `npm run lint` invocation reproduced the previously observed duplicate `eslint-plugin-import` resolution failure from the worktree and parent repository configurations. With the worktree-local ESLint configuration isolated via `--no-eslintrc --config`, lint exited 0 with zero errors and two non-blocking `import/no-duplicates` warnings in the existing configuration-source import structure. Repository lint configuration was not changed.
-
-Live-provider acceptance for Conversion Configuration v1 was not performed. No packaged/runtime acceptance claim is made for this slice.
-
-Do not convert deterministic, packaged, credential, or feasibility evidence into a live-provider claim.
-
----
-
-## 9. Closed areas
-
-Do not reopen without new failing evidence or explicit scope approval:
-
-- local-first one-app / multi-source architecture;
-- Workspace ownership and one-active-Run database rule;
-- source-keyed Jobs and nullable GT-only `query_group_id`;
-- immutable Attempt history;
-- raw-evidence preservation;
-- missing-is-not-zero semantics;
-- requested-versus-observed separation;
-- execution-versus-validation separation;
-- provider semantics staying outside generic Core;
-- credential secrets staying outside renderer and ordinary config;
-- source-neutral freshness separation;
-- current R1 acquisition-mode boundaries;
-- Google Trends relative-interest semantics;
-- current safe connection/readiness IPC boundary;
-- Developer Token retirement;
-- Task/Blog package non-acquisition boundary;
-- Performance Max remaining outside the approved SEARCH family.
-
----
-
-## 10. Exact next action
-
-Completed deterministic source checkpoints:
-
-- Google Analytics 4 source vertical slice;
-- Google Ads Change History source vertical slice;
-- Google Keyword Planner validator migration;
-- Google Ads Campaign Settings v1 gate;
-- Google Ads Negatives v1 checkpoint;
-- Google Ads Search Reporting checkpoint;
-- Google Ads Growth provider-target execution binding.
-
-Next:
-
-1. Use `DATA_CONTRACTS.md` → `BLOG_WRITING_PACK v2` approved delivery requirements
-   (2026-10-17) for the approved semantics, exact earlier-contract resolutions,
-   remaining decisions and source limitations; these remain authoritative for
-   follow-up work.
-2. GA4 Content metric and property/timezone/window compliance are deterministically
-   implemented. Keep legacy missing provenance blocked without automatic repairs.
-   Independent coverage and real source/API acceptance remain separate boundaries;
-   live execution requires its own explicit scope.
-3. Keep required KWP keyword completeness, exact SERP query selection, provider-
-   supported İkas stock/status rules, Sitemap scope/page-type/controlled acquisition,
-   independent coverage/freshness decisions open. Missing legacy GA4 property or
-   timezone evidence remains an explicit per-artifact blocker.
-   Real feasibility, currency/missing fields, provider acceptance, a successful
-   real-evaluator v2 publication and full delivery remain unproven. JSON mechanics
-   and independent publication-time checks are verified above. Preserve blocked-family status and v1/
-   Ads Growth boundaries; a later implementation requires its own task scope.
-
-Do not run live provider requests merely to reconfirm already deterministic results.
-
----
-
-## 11. Authority routing
-
-| Need | Authority |
-|---|---|
-| Current repository state / next action | `PROJECT_HANDOFF.md` |
-| Product scope / stable acceptance boundary | `PROJECT_SPEC.md` |
-| Component ownership / dependency direction | `ARCHITECTURE.md` |
-| Persisted contracts / nulls / provenance | `DATA_CONTRACTS.md` |
-| Evidence acceptance semantics | `VALIDATION_SPEC.md` |
-| Test depth / regression / live gates | `TEST_STRATEGY.md` |
-| Adding or extending a source | `SOURCE_MODULE_GUIDE.md` |
-| Historical architectural rationale | `DECISIONS.md` |
-
-Read only the smallest authority set required by the task.
-
-`DECISIONS.md` is cold history and should not be loaded for ordinary implementation work.
-
----
-
-## 12. Evidence discipline
-
-Keep these claims distinct:
-
-- planned;
-- implemented;
-- deterministically verified;
-- packaged/runtime verified;
-- feasibility approved;
-- live-provider verified.
-
-Never upgrade one category into another without evidence.
-
----
-
-
-## Asset collection preset checkpoint
-
-Current verified Saved Preset catalog for the Bitkimark Production Workspace:
-
-- `Google Ads Growth`
-- `Blog - 7 Day`
-- `Blog - 14 Day`
-- `Blog - 30 Day`
-
-`Google Ads Growth` preserves the existing Growth preset identity and the approved Growth evidence-source configuration. That preset/configuration completeness must not be read as packaged/runtime or live-provider acceptance.
-
-The Growth execution contract is deterministically verified at the Review/Start boundary: required Google Ads `customer_id`, GA4 `property_id`, and GSC `site_url` values are hydrated from canonical Workspace connection metadata into resolved execution configuration, persisted into relevant immutable Job `source_context`, and validated against the active Workspace connection before provider interaction. Missing required target metadata blocks Growth planning, and post-Review Workspace target drift fails closed rather than silently retargeting collection.
-
-The three Blog presets share the same seven evidence families:
-
-- Google Trends Interest Over Time
-- Google Search Console Query × Page
-- Google Ads Search Terms
-- Google Keyword Planner historical metrics
-- İkas Products
-- SerpApi Google SERP
-- Bitkimark Sitemap
-
-Only the GSC Query × Page and Google Ads Search Terms rolling request windows vary between the Blog presets. Their reusable configurations retain relative 7/14/30-day policies, while Review/Start resolves those requests into exact absolute dates for execution and the Run configuration snapshot.
-
-Google Trends retains its existing 24-calendar-month policy. Keyword Planner, İkas, Sitemap, and SerpApi retain their own source semantics.
-
-The Saved Preset seed path is idempotent:
-
-- existing target presets are updated in place;
-- the legacy `Google Ads Growth Rebuild` record migrates to `Google Ads Growth` without replacing its `preset_id`;
-- the legacy `Blog Agentic Content Research` record migrates to `Blog - 30 Day` without replacing its `preset_id`;
-- missing `Blog - 7 Day` and `Blog - 14 Day` records are created;
-- conflicting legacy/target duplicates fail closed instead of being silently deleted or merged.
-
-Production persistence was reconciled against the Bitkimark Production Workspace after a verified SQLite backup. Exact persisted configurations were compared with the production preset factories, and the unrelated `Bitkimark - Test` Saved Preset was preserved unchanged.
-
-Deterministically verified:
-
-- 7/14/30 desktop date-policy resolution;
-- truthful GSC Query × Page and Ads Search Terms task identities;
-- exact Growth and Blog reusable configurations;
-- Growth provider-target hydration, immutable Job binding, missing-target planning blockers, and fail-closed target-drift protection;
-- multi-source Review/Start absolute-window resolution with reusable-relative / run-snapshot separation;
-- duplicate-free idempotent seed behavior and legacy identity preservation;
-- existing desktop multi-source regressions;
-- desktop UI preset lifecycle regressions;
-- GA4 desktop planning regressions;
-- TypeScript compilation.
-
-No 15-day or 60-day asset preset variant is part of the current approved catalog.
-
-Runtime visibility of the reconciled production Saved Preset catalog was explicitly observed in the development desktop runtime: Bitkimark Production was selected by default and the Saved Presets list showed Bitkimark - Test, Google Ads Growth, Blog - 7 Day, Blog - 14 Day, and Blog - 30 Day.
-
-## Latest completed source checkpoints
-
-Latest completed vertical slices:
-
-- Google Analytics 4 source vertical slice
-  Commit:
-  161b2be feat: add google analytics 4 source vertical slice
-
-- Google Ads Change History source vertical slice
-  Commit:
-  0cc9d20 feat: add google ads change history source vertical slice
-
-### Completion details for Google Ads Change History
-
-Completed deterministic verification:
-- shared source contract
-- provider request boundary
-- raw artifact preservation path
-- provider row normalization
-- fail-closed validation
-- production runtime registration
-- validator registration
-- export/package loading
-
-Architecture verification:
-- Provider-specific Google Ads Change History semantics remain outside Core.
-- Source identity and dataset identity are represented through shared contracts.
-- Core remains source-neutral.
-
-### Verification boundary
-
-Completed:
-- deterministic integration verification
-
-Not performed:
-- live Google Ads API verification
-- real credential verification
-- packaged desktop runtime verification
-
-These require separate explicit verification scope.
-
----
-
-## Keyword Planner validator migration checkpoint
-
-Completed:
-- Google Keyword Planner validation ownership moved from generic Google API validator path to dedicated KeywordPlannerValidator.
-- Existing source identity and dataset contracts preserved.
-- Existing Keyword Planner deterministic tests remain passing.
-
-Verification:
-- Keyword Planner reviewed API integration tests passed.
-- Production source composition verification passed.
-- Related Google Ads Change History and export regression checks passed.
-
-Not performed:
-- Live Google Ads API verification.
-- Real credential verification.
-- Packaged desktop runtime verification.
-
----
-
-## Google Ads Campaign Settings v1 checkpoint
-
-Completed:
-- Campaign Settings remains within the existing `google-ads-configuration` source family.
-- Provider-native Campaign Settings contract, query, normalization, and validation boundaries are implemented.
-- Core remains source-neutral and provider semantics remain inside the Google Ads source module.
-
-Verification:
-- Google Ads Campaign Settings gate passed.
-- Contract, normalization, source, and validation integration checks passed.
-
-Export boundary:
-- No dedicated Campaign Settings export mapping was identified as required.
-- Existing package/export behavior remains unchanged.
-
-Not performed:
-- Live Google Ads API verification.
-- Real credential verification.
-- Packaged desktop runtime verification.
-
----
-
-## Google Ads Negatives v1 checkpoint
-
-Completed:
-- Google Ads negative evidence contracts are verified.
-- Five negative dataset/resource contracts preserve provider-native semantics.
-- Negative keyword normalization preserves identities, nulls, and provider status.
-- Core remains source-neutral and Google Ads semantics remain inside the source module.
-
-Verification:
-- Google Ads Negatives gate passed.
-- Contract, normalization, configuration source, and validation integration checks passed.
-
-Not performed:
-- Live Google Ads API verification.
-- Real credential verification.
-- Packaged desktop runtime verification.
-
----
-
-## Google Ads Search Reporting checkpoint
-
-Completed:
-- Google Ads Search Reporting vertical slice is deterministically verified.
-- Six canonical SEARCH reporting datasets preserve provider-native semantics:
-  - CAMPAIGN_PERFORMANCE
-  - AD_GROUP_PERFORMANCE
-  - KEYWORD_PERFORMANCE
-  - SEARCH_TERMS
-  - AD_PERFORMANCE
-  - RSA_ASSET_PERFORMANCE
-- SearchStream raw evidence handling, normalization, and fail-closed validation boundaries are verified.
-- Core remains source-neutral and Google Ads reporting semantics remain inside the source module.
-
-Verification:
-- Google Ads Search Reporting gate passed.
-- Contract, source, SearchStream, normalization, and validation integration checks passed.
-
-Not performed:
-- Live Google Ads API verification.
-- Real credential verification.
-- Packaged desktop runtime verification.
-
----
-
-## 13. Governing handoff rule
-
-> **Record where the repository is now, what remains unproven, and the next smallest safe action. Keep history in Git, not in the active handoff.**
+**Checkpoint:** 2026-10-23 — documentation-only Collector direction reconciliation.
+**Branch:** `codex/docs-collector-direction`.
+**Implementation base:** `a1015a489bb6fa1b190ba997eeefb2456f9492dc`, the fetched
+`origin/feat/google-analytics-4-source-v1` tip verified before this work began.
+This branch changes five Markdown documents only. It adds no application behavior,
+source capability, test result, dependency, migration or release acceptance.
+
+## Product direction and next action
+
+RoofRoom is a local-first, modular, multi-source desktop evidence collector:
+Collect → Preserve → Validate → Normalize where deterministic → Document → Package
+→ Export. Prefer supported, authorized APIs over repetitive provider-site visits;
+controlled provider exports and explicit imports retain their actual acquisition modes.
+Users manually import exported files into ChatGPT Projects. No in-app LLM analysis,
+SEO/Ads recommendations, scoring, content generation, business decisions or automatic uploads.
+
+General accepted-raw Run export is the primary delivery workflow. A Blog collection
+Run and an Ads collection Run produce separate folders, each retaining its own
+source-specific Jobs and evidence. General export does not automatically combine
+unrelated Runs. Existing specialized cross-Run packaging stays explicit and separate.
+Blog/Ads package completeness cannot become a prerequisite for otherwise eligible
+general raw export; acceptance, identity, integrity and export eligibility still apply.
+
+Development priorities:
+
+1. Start from this branch's actual base and preserve the implementation/verification
+   distinctions below. Do not assume local feature WIP is present on GitHub.
+2. Implement the approved export-time destination-parent picker through existing
+   privileged desktop mechanisms. Every invocation asks; cancellation creates no
+   export; an identifiable Run-specific child is created without silent overwrite.
+   Keep canonical evidence in protected application storage and report the actual
+   destination and truthful collection/export outcome. **The picker is not implemented.**
+   Requirements: `PROJECT_SPEC.md`; future focused checks: `TEST_STRATEGY.md`.
+3. Obtain separate authorization for bounded real collection → accepted raw evidence
+   → Run export acceptance. Prior synthetic/runtime checks do not prove expanded
+   source acquisition or current live-provider acceptance.
+4. Establish direct acquisition feasibility for remaining manual/unsupported paths,
+   including desired İkas API acquisition and future Semrush scope. Add no speculative
+   API support or new Release 1.0 commitment.
+5. Verify practical completion/status/destination reporting and any implemented
+   general-export Open/Reveal behavior at its actual desktop boundary.
+
+## Implemented in the remote base
+
+| Area | Actual implementation boundary |
+| --- | --- |
+| Shared application | One Electron application; source-neutral Core; Workspace-owned Runs; independent source Jobs and immutable Attempts; privileged credentials/filesystem; source-owned provider semantics |
+| General raw Run export | `ProductionDataPackageLoader.loadRunExport` requires a known terminal Run. Export All / Successful Only preserve accepted native files, provenance and integrity with `RAW_EVIDENCE.json`, manifests and available normalized datasets. Collection completeness and export success remain distinct; failed/missing evidence is not fabricated. |
+| Current export destination | Application-owned per-Run export storage, with overwrite refusal. No export-time destination-parent picker and no stable non-terminal `RETRY_REQUIRED` export capability in this base. |
+| Google Trends | Controlled browser/provider CSV acquisition; relative interest, not an official API or absolute volume. Later Turkish label support and explicit-scope hardening are withheld below. |
+| GSC / Google Ads / Keyword Planner | Existing official API paths and source-native dataset contracts; Planner's explicit manual CSV fallback remains a separate mode. Implementation alone grants no source-wide live acceptance. |
+| GA4 | Official Data API `runReport` source, Content v1/v2 and distinct Paid Funnel contracts with source-owned normalization. Expanded general normalized GA4/configuration export integration exists only as separate local WIP, not this branch. |
+| İkas / Sitemap / SERP | İkas Products XLSX FILE_IMPORT (`supports_api: false`); bounded HTTP/XML sitemap collection; on-demand SerpApi acquisition. Semrush collection is not implemented. |
+| Specialized packages | Existing Ads and Blog v1 package paths; Blog v2 multi-Run backend draft/readiness and JSON-only publication mechanics. These do not establish real Blog COMPLETE coverage or full delivery. The later Blog v2 desktop selection/verified JSON Open/Reveal interface is not in this base. |
+
+Raw evidence is authoritative. Preserve requested versus observed context, null or
+missing versus actual zero, independent identities, deterministic source-traceable
+derivations and original bytes. Optional normalization cannot invent absent fields.
+Detailed source/export eligibility remains in `DATA_CONTRACTS.md` and `VALIDATION_SPEC.md`.
+
+## Withheld local commits and WIP — absent from this branch
+
+The existing local feature worktree and its history are preserved separately.
+The following commits are not ancestors of this documentation branch and must not
+be represented as delivered by its remote implementation:
+
+| Local commit | Withheld implementation |
+| --- | --- |
+| `84094a8119cff0f8facb94a74db67f1cbde40046` | Observed Turkish Trends weekly CSV label/category compatibility and focused tests |
+| `cfd82d68e023ce73b411391aa3db56636397ae7f` | Explicit `node:sqlite` main-bundle external and actual Forge/Vite build regression |
+| `6dd1d5f246c31a9706d9d9f50c11999a3946bb44` | Trends trusted group/explicit-date Review/Start scope hardening plus stable partial general exports, snapshot metadata and UI controls |
+
+Local documentation commit `985c92bc107402cd00e569b320a6d8669bd45e2c` is not
+included either. Its four compatible document changes were reapplied; this handoff
+was reconciled separately against the remote base. Later local implementation WIP
+includes expanded general export integration, Blog v2 desktop/JSON access and
+selected-window GSC cutoff proof. None is shipped by this documentation branch.
+Private reports, raw evidence, receipts and other worktrees remain outside this commit.
+
+## Verification limits and specialized blockers
+
+The base's prior deterministic raw-export record reports 10/10 cases and affected
+renderer/loader/exporter checks. Prior isolated packaged QA reports actual UI/IPC
+exports of prepared accepted fixtures, byte/hash/provenance checks, truthful status
+and overwrite refusal. Fixture acquisition in compiled Node is not packaged-provider
+acquisition. These are historical records, not fresh checks for this documentation task.
+
+The owning records already present in the base are:
+- `docs/superpowers/plans/2026-10-19-development-checkpoint.md`;
+- `docs/superpowers/plans/2026-10-20-desktop-raw-export-completion.md`;
+- `docs/superpowers/plans/2026-10-20-isolated-packaged-acceptance.md`.
+
+No new application tests, package build, installation, provider request, production
+export, credential change or Keychain experiment is authorized by this documentation
+publication. General-export Open/Reveal and expanded source live acceptance remain
+unverified. Local historical GT01/KWP01 acceptance records are not acceptance of
+this remote branch. The later local Keychain-dependent runtime check stays pending
+by user choice; it neither qualifies this base nor authorizes a new experiment.
+
+Specialized Blog v2 requirements remain intact and separate from general export.
+In this base, GSC preserves final/date observations but still blocks whole-window/
+latest-at-publication eligibility with `gsc_finality`; the later local positive-cutoff
+implementation is absent. Planner calendar/currency/coverage, product field/freshness,
+sitemap page evidence and other mandatory coverage limitations remain as recorded
+in `DATA_CONTRACTS.md`. No COMPLETE package claim or weaker policy follows from
+these priorities. Specialized compliance work requires its own approved scope.
+
+## Authority routing
+
+- Product scope and future export destination: `PROJECT_SPEC.md`.
+- Source-neutral ownership and privilege boundaries: `ARCHITECTURE.md`, `SOURCE_MODULE_GUIDE.md`.
+- Evidence/source/package contracts and unresolved requirements: `DATA_CONTRACTS.md`.
+- Validation and verification depth: `VALIDATION_SPEC.md`, `TEST_STRATEGY.md`.
+- Approved product-direction decision: ADR-069 in `DECISIONS.md`.
+- Approved GA4 extension: `docs/superpowers/specs/2026-10-03-google-analytics-4-source-design.md`.
+
+Implementation history remains in Git and the owning completed plans. Keep this
+handoff a current-state router; do not revive older next-action priorities merely
+because a completed historical plan contains them.

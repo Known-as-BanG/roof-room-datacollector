@@ -340,7 +340,21 @@ Main/Core re-resolves authoritative state before privileged actions.
 
 ### Production Data Package
 
-Consumes accepted evidence and preserves source separation/provenance.
+The general Collector export consumes eligible accepted evidence from one
+selected Run and preserves independent Job/source/dataset identities, raw bytes
+and provenance. Blog and Ads collection Runs have separate export folders;
+general export does not automatically combine unrelated Runs.
+
+Source acceptance/integrity/export eligibility governs this path. Specialized
+Blog/Ads completeness and publication policy remains confined to those package
+workflows and does not become a general-export prerequisite.
+
+The approved export-time parent-directory picker is future behavior, specified in
+`PROJECT_SPEC.md`. Native selection, canonical path handling, no-overwrite creation
+and byte verification belong behind existing privileged desktop mechanisms;
+renderer input never grants arbitrary filesystem authority. No new package
+architecture or migration is implied. Original evidence remains in protected
+application-owned storage; exported files are delivery copies.
 
 ### Task Packages
 
