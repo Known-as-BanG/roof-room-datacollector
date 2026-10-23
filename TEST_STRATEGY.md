@@ -244,6 +244,33 @@ Where affected, prove:
 
 Prove accepted-only loading, source separation, integrity/provenance, no raw mutation.
 
+For the approved general Run export destination picker, verification is future
+work until the actual boundary is implemented. Focused deterministic IPC/filesystem
+and renderer checks must prove:
+
+- Each export invocation opens destination-parent selection; cancellation creates
+  no output and retains no misleading success or previous-Run receipt.
+- The selected Run produces an identifiable child beneath the chosen parent;
+  separate Blog/Ads Runs remain separate folders with no automatic cross-Run merge.
+- Existing output is refused without silent overwrite; unsafe or inaccessible
+  destinations produce meaningful errors through the privileged boundary.
+- Exported raw bytes match authoritative size/SHA-256 and preserve exact
+  Workspace/Run/Job/Attempt/Artifact/Validation provenance; source evidence and
+  historical Attempts remain unchanged.
+- Otherwise eligible general raw export remains available despite unrelated
+  specialized Blog/Ads completeness blockers, while real acceptance/integrity
+  failures still block and missing evidence is never fabricated.
+- Completion reports the actual destination and truthful collection/export
+  success, warning, partial, missing-evidence or failure status.
+
+Verify the native directory picker and any general-export Open/Reveal behavior
+in the actual runtime only when those interactions are implemented and in scope.
+Synthetic or specialized-package Open/Reveal checks do not establish general
+export behavior. Live collection → accepted evidence → Run export requires a
+separately approved exact provider/Workspace/scope and production export; prior
+bounded acceptance does not prove expanded source coverage. Documentation-only
+changes need documentation checks, not application or packaging QA.
+
 ### `ADS_OPTIMIZATION_PACK v1`
 
 Prove exact compatibility, current/previous window rules, no reconstruction, deterministic evidence reuse, immutable publication, safe manifest/table/workbook validation, trusted desktop Review/Start/Open contracts.

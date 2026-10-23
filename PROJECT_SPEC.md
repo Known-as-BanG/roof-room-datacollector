@@ -7,7 +7,7 @@
 
 ## 1. Product definition
 
-RoofRoom Data Collector is a local-first, modular desktop data-collection and evidence-packaging application.
+RoofRoom Data Collector is a local-first, modular, multi-source desktop evidence collector.
 
 Its governing workflow is:
 
@@ -25,7 +25,16 @@ Normalization and packaging are downstream representations. They never replace a
 
 RoofRoom collects trustworthy provider evidence for downstream use.
 
+The primary workflow is Workspace → saved preset or supported sources/datasets →
+review account/property/keywords/dates and other source parameters → collection
+Run → accepted evidence with provenance → that Run's export folder. The user
+manually imports delivered files into ChatGPT Projects for external analysis.
+Supported, authorized APIs should replace repetitive provider-site visits where
+available. Explicit imports and controlled provider exports remain valid alternatives.
+
 It is not an analysis, SEO, advertising, merchandising, scoring, recommendation, strategy, or decision engine.
+In-app LLM analysis, content generation, business decisions and automatic ChatGPT
+uploads are outside the product boundary.
 
 ---
 
@@ -131,6 +140,10 @@ Manual CSV change fields remain provider-exported source evidence.
 
 Manual Products XLSX import.
 
+The implemented mode is `FILE_IMPORT`, not direct API acquisition. Direct İkas API
+collection is desired future feasibility/scope work; API availability, access and
+dataset mapping must be established before an implementation commitment.
+
 Preserve the original workbook and evidence-backed production mapping.
 
 Blank stock or unavailable values remain missing.
@@ -151,11 +164,25 @@ Preserve query context, location/language/device, retrieval time, raw provider J
 
 Do not convert this evidence into intent, commercial-fit, page-type, SEO, or marketing recommendations inside the Collector.
 
+### Google Analytics 4 — separately approved extension
+
+The approved `docs/superpowers/specs/2026-10-03-google-analytics-4-source-design.md`
+extends the earlier release baseline. The local source implements official Google
+Analytics Data API `runReport` acquisition for `GA4_CONTENT_PERFORMANCE` (Content
+v1/v2 contracts) and `GA4_PAID_FUNNEL`, with source-owned normalization and distinct
+semantics. This corrects the former blanket GA4 exclusion; it does not expand scope
+to arbitrary GA4 reports, event-grain acquisition or Orders/economics. Current
+verification and delivery limits belong in `PROJECT_HANDOFF.md`; source code or
+deterministic checks alone do not establish runtime or live-provider acceptance.
+
 ### Excluded / future
 
-Semrush is not active Release 1.0 scope.
+Semrush is a future scope/feasibility item, not implemented acquisition or an active
+Release 1.0 commitment.
 
-Merchant Center, GA4, unsupported Google Ads modes, arbitrary crawling/imports, continuous SERP tracking, and other providers require separate approved scope and feasibility.
+Merchant Center, unsupported Google Ads modes, arbitrary crawling/imports,
+continuous SERP tracking and other providers require separate approved scope and
+feasibility. No new Release 1.0 source commitment follows from this reconciliation.
 
 ---
 
@@ -282,7 +309,29 @@ On-demand, manual-import, due, stale, fresh, and unknown states must not be coll
 
 ### Production Data Package
 
-Packages accepted evidence without cross-source analysis.
+General accepted-raw Run export is the primary Collector delivery capability.
+It packages one selected Run's eligible evidence, preserving independent source
+Jobs and provenance without cross-source analysis or automatic cross-Run merging.
+A Blog collection Run and an Ads collection Run produce separate delivery folders.
+Each folder may contain multiple native raw files, manifests and appropriate
+supporting artifacts. No new cross-Run consolidation is requested.
+
+General export success is independent of specialized Blog/Ads completeness rules.
+Missing Blog v2 mandatory fields, freshness or finality cannot by themselves block
+an otherwise eligible general accepted-raw export. Actual acceptance, identity,
+byte integrity and export eligibility remain mandatory; partial/warning/failure
+outcomes must stay truthful. Specialized packages retain their own stricter rules.
+
+**Approved target — export-time destination selection (not implemented):** on
+every general Run export invocation, ask for a destination parent directory and
+create an identifiable Run-specific child inside it. Cancelling creates no export.
+Do not silently overwrite existing output. Preserve original application-owned
+evidence and historical Attempts; verify paths/integrity/provenance behind the
+privileged boundary. Report the actual exported location and collection/export
+status, including partial, warning, missing-evidence and failure outcomes.
+The current application-owned export root is not evidence of this picker. Its
+implementation and verification are the next general Collector delivery slice;
+`TEST_STRATEGY.md` defines the focused acceptance boundary.
 
 ### Task Packages
 
@@ -299,6 +348,13 @@ Its name does not authorize optimization recommendations; the package contains p
 It records truthful coverage and excludes out-of-recipe evidence.
 
 It does not recollect, retry, create Attempts, mutate Run/Job state, or perform blog-topic/page-type recommendations.
+
+Existing specialized Blog v2 multi-Run drafts, readiness and JSON publication
+mechanics remain distinct from general Run exports. Preserve their frozen
+requirements/evidence and mandatory source/freshness/finality/integrity blockers;
+do not reinterpret incomplete specialized delivery as success. Their detailed
+contract stays in `DATA_CONTRACTS.md`. Further specialized field-compliance work
+is separately approved work, not a prerequisite for general Collector delivery.
 
 ---
 

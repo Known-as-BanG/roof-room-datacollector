@@ -1,5 +1,66 @@
 # RoofRoom Data Collector — Project Handoff
 
+## Current Collector direction — 2026-10-23
+
+This routing section governs the next work; earlier implementation checkpoint
+notes below remain preserved evidence, not authorization to expand this task.
+Product/architecture/source/package invariants remain in their canonical documents.
+
+**Repository snapshot:** root checkout is `/Users/furkan/Projects/roofroom-data-collector`
+on `fix/google-ads-reporting-metrics` at `fdf2dc98ba2adde5d619a0dfe9aa056add1133b9`.
+Active worktree is `.worktrees/google-analytics-4-source-v1`, branch
+`feat/google-analytics-4-source-v1`, starting HEAD
+`6dd1d5f246c31a9706d9d9f50c11999a3946bb44`. Existing upstream is
+`origin/feat/google-analytics-4-source-v1`; its observed remote tip is
+`a1015a489bb6fa1b190ba997eeefb2456f9492dc`, three implementation commits behind.
+The index was empty. Tracked/untracked implementation WIP, earlier documentation
+edits, private reports and other worktrees must stay separate from this task's
+authorized documentation-only commit/push. Inspect actual ancestry and staged
+scope before publishing; do not silently include unrelated pending commits.
+
+**Current capability truth:** general exports are already Run-bound and preserve
+accepted raw evidence plus manifests/provenance, with truthful stable partial
+snapshots. Their current destination is application-owned Run export storage;
+the native export-time destination-parent picker is **not implemented**. GA4
+Content v1/v2 and Paid Funnel acquisition/normalization exist; local export
+integration and Ads configuration follow-ups remain WIP. Prior deterministic and
+synthetic packaged receipts do not establish expanded live acquisition. İkas is
+XLSX FILE_IMPORT; direct API is desired feasibility work. Semrush remains future
+scope/feasibility. Trends is controlled browser/provider-CSV acquisition, not an
+official API. GT01 partial delivery and KWP01's single live Run are bounded prior
+acceptance, not source-wide production readiness. The final Keychain-dependent
+runtime check remains pending by user choice; no general-export Open/Reveal
+acceptance is established by specialized JSON access tests.
+
+**Development priorities:**
+
+1. Preserve the real branch/worktree and implemented/verified/unverified distinctions.
+2. Implement the approved per-invocation general export parent-directory picker
+   through existing privileged desktop mechanisms: cancellation creates nothing,
+   each selected Run gets its own child, no silent overwrite, original evidence
+   stays protected. Product contract: `PROJECT_SPEC.md`; focused checks: `TEST_STRATEGY.md`.
+3. Separately authorize bounded real collection → accepted raw evidence → Run
+   export acceptance. A Blog Run and an Ads Run deliver separate folders; general
+   export never automatically combines unrelated Runs.
+4. Establish supported direct acquisition feasibility for genuinely manual gaps
+   (İkas API, Semrush); no speculative API or new Release 1.0 commitment.
+5. Verify practical completion/status/destination reporting and any implemented
+   general-export Open/Reveal behavior at the actual changed desktop boundary.
+
+General Collector delivery is independent of specialized Blog/Ads completeness.
+Keep existing Blog v2 selection, verified JSON access and selected-window GSC
+finality work; `gsc_latest_window`, Planner calendar/currency and other mandatory
+specialized blockers remain. Further Blog field-compliance work is separately
+approved work, not the next prerequisite for general delivery. No analysis,
+recommendations, content generation, scoring, business decisions or automatic
+ChatGPT uploads. Users manually import exported files into ChatGPT Projects.
+
+The documentation-only reconciliation changes no runtime behavior and grants no
+live-provider, production export, credential, Keychain or packaging authorization.
+Commit/push authority here covers only this task's documentation, not existing WIP.
+
+## Preserved implementation checkpoint
+
 **Checkpoint date:** 2026-10-20 — Google Trends evidence and stable partial export.
 **Current branch:** `feat/google-analytics-4-source-v1`.
 **Scope and Git:** the reviewed work extends Collector checkpoint `a1015a4` on the

@@ -111,6 +111,7 @@ Do not silently rewrite history.
 | ADR-066 | ACCEPTED | macOS user-entered secrets use main-owned native masked prompt |
 | ADR-067 | ACCEPTED | Google Ads SEARCH reporting is one family with independent dataset Jobs |
 | ADR-068 | ACCEPTED | Task Packages assemble accepted evidence without owning acquisition |
+| ADR-069 | ACCEPTED | Collector-first delivery: independent Run exports and export-time destination selection |
 
 ---
 
@@ -132,6 +133,20 @@ The accepted register currently means:
 - desktop/general package flows delegate to existing Core contracts;
 - Google Ads SEARCH reporting is one family with independent dataset Jobs;
 - Task Packages assemble accepted evidence and do not own acquisition.
+
+ADR-069 (approved product-direction reconciliation, 2026-10-23) retains these
+boundaries and gives general accepted-raw Run delivery priority over further
+specialized package compliance. One selected Run produces its own delivery folder;
+Blog/Ads Runs stay separate, and specialized cross-Run assembly stays explicit.
+Each general export must offer a native destination-parent choice and create a
+Run-specific child without silent overwrite; this is an approved future
+requirement, not implemented/runtime acceptance. The owning behavior and future
+checks are in `PROJECT_SPEC.md` and `TEST_STRATEGY.md`.
+
+API-first means supported, authorized acquisition where available; imports remain
+imports. RoofRoom supplies evidence for manual downstream use in ChatGPT Projects,
+without in-app analysis or automatic uploads. This supersedes no historical source
+or specialized package integrity requirement and adds no R1 source commitment.
 
 ---
 
