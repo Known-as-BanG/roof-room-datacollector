@@ -924,12 +924,14 @@ const main = async () => {
             const adsConfig = reviewDraft?.reusable_configuration?.sources?.['google-ads-search-terms'];
             if (adsConfig?.included) {
               const reviewedArtifact = {
-                workspace_id: 'ws_fixture', task_id: 'google-ads-search-terms', source_id: 'google-ads-search-terms',
+                workspace_id: 'ws_fixture', task_id: adsConfig.task_id, source_id: 'google-ads-search-terms',
                 reference_date: '2026-09-17', resolved_at: '2026-09-17T12:00:00.000Z',
                 reusable_configuration: reviewDraft.reusable_configuration,
                 resolved_configuration: { sources: { 'google-ads-search-terms': {
                   ...adsConfig, source_mode: 'search_term_view', campaign_type: 'SEARCH',
-                  requested_date_start: '2026-08-31', requested_date_end: '2026-09-16',
+                  date_policy: adsConfig.date_mode === 'EXPLICIT' ? 'EXPLICIT' : adsConfig.date_policy,
+                  requested_date_start: adsConfig.date_mode === 'EXPLICIT' ? adsConfig.requested_date_start : '2026-08-31',
+                  requested_date_end: adsConfig.date_mode === 'EXPLICIT' ? adsConfig.requested_date_end : '2026-09-16',
                 } } },
               };
               window.__reviewedDesktopArtifact = reviewedArtifact;
@@ -1187,7 +1189,7 @@ const main = async () => {
             ) {
               const resolvedGroups =
                 keywordPlannerConfig.groups.map(
-                  (group) => ({
+                  (group, index) => ({
                     task_id:
                       'keyword-planner-historical-metrics',
                     source_id:
@@ -1195,6 +1197,14 @@ const main = async () => {
                     source_mode:
                       'OFFICIAL_API',
                     ...group,
+                    customer_id: '1234566003',
+                    country_code: 'TR',
+                    language_code: 'tr',
+                    keyword_plan_network: 'GOOGLE_SEARCH',
+                    ...(window.__keywordPlannerReviewedDates?.[index] ?? {
+                      requested_date_start: '2025-09-01',
+                      requested_date_end: '2026-08-31',
+                    }),
                   }),
                 );
 
@@ -1215,6 +1225,8 @@ const main = async () => {
                   sources: {
                     'google-keyword-planner': {
                       ...keywordPlannerConfig,
+                      customer_id: '1234566003',
+                      dataset_type: 'KEYWORD_HISTORICAL_METRICS',
                       groups:
                         resolvedGroups,
                     },
@@ -5322,7 +5334,7 @@ const main = async () => {
     await adsCard.getByText('READY', { exact: true }).waitFor();
     await adsCard.click();
     assert.equal(await page.getByText('Scope: SEARCH campaigns · search_term_view', { exact: true }).count(), 1);
-    assert.equal(await page.getByText('Date policy: 17-day reporting lag through yesterday', { exact: true }).count(), 1);
+    assert.equal(await page.getByLabel('Search Terms date mode', { exact: true }).inputValue(), 'ROLLING');
     const adsReviewButton = page.getByRole('button', { name: 'Review Quick Run', exact: true });
     assert.equal(await adsReviewButton.isEnabled(), false, 'Connected account must not be selected automatically.');
     const adsAccount = page.getByLabel('Search Terms customer account', { exact: true });
@@ -5341,6 +5353,46 @@ const main = async () => {
     await page.getByRole('button', { name: 'Start Run', exact: true }).click();
     assert.deepEqual(await page.evaluate(() => window.__startedDesktopDraft), await page.evaluate(() => window.__reviewedDesktopArtifact), 'Ads Start must forward the exact reviewed artifact');
     console.log('PASS ADS-REVIEW-UI-001: Ads task sends date policy and starts the exact reviewed artifact');
+
+    await page.reload();
+    await page.getByRole('button', { name: 'TASKS', exact: true }).click();
+    await page.getByTestId('task-card').filter({ has: page.getByText('Google Ads — Search Terms 7 Days', { exact: true }) }).click();
+    await page.getByLabel('Search Terms customer account', { exact: true }).selectOption('1234567890');
+    const dateMode = page.getByLabel('Search Terms date mode', { exact: true });
+    assert.equal(await dateMode.count(), 1, 'Search Terms must expose explicit inclusive dates');
+    assert.equal(await dateMode.inputValue(), 'ROLLING');
+    await dateMode.selectOption('EXPLICIT');
+    const explicitReviewButton = page.getByRole('button', { name: 'Review Quick Run', exact: true });
+    assert.equal(await explicitReviewButton.isEnabled(), false);
+    await page.getByLabel('Search Terms requested start', { exact: true }).fill('2026-10-05');
+    assert.equal(await explicitReviewButton.isEnabled(), false);
+    await page.getByLabel('Search Terms requested end', { exact: true }).fill('2026-10-04');
+    assert.equal(await explicitReviewButton.isEnabled(), false);
+    await page.getByLabel('Search Terms requested end', { exact: true }).fill('2026-10-11');
+    assert.equal(await explicitReviewButton.isEnabled(), true);
+    await explicitReviewButton.click();
+    await page.getByRole('heading', { name: 'Review Quick Run', exact: true }).waitFor();
+    assert.deepEqual(await page.evaluate(() => window.__reviewedDesktopDraft.reusable_configuration.sources['google-ads-search-terms']), {
+      included: true, task_id: 'google-ads-search-terms-7-days', customer_id: '1234567890',
+      date_mode: 'EXPLICIT', requested_date_start: '2026-10-05', requested_date_end: '2026-10-11',
+    });
+    for (const detail of ['Dataset: SEARCH_TERMS', 'Customer: 1234567890', 'Campaign type: SEARCH', 'Source mode: search_term_view', 'Date window: 2026-10-05 → 2026-10-11']) {
+      assert.equal(await page.getByText(detail, { exact: true }).count(), 1, detail);
+    }
+    assert.equal(await page.getByText('Resolved range: 2026-10-05 → 2026-10-11', { exact: true }).count(), 1);
+    await page.getByRole('button', { name: 'Back to Task', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: 'Start Run', exact: true }).count(), 0, 'Returning to edit clears the old Review');
+    await page.getByLabel('Search Terms requested end', { exact: true }).fill('2026-10-12');
+    await page.getByRole('button', { name: 'Review Quick Run', exact: true }).click();
+    assert.equal(await page.getByText('Date window: 2026-10-05 → 2026-10-12', { exact: true }).count(), 1);
+    await page.getByRole('button', { name: 'Back to Task', exact: true }).click();
+    await page.getByLabel('Search Terms date mode', { exact: true }).selectOption('ROLLING');
+    await page.getByRole('button', { name: 'Review Quick Run', exact: true }).click();
+    assert.deepEqual(await page.evaluate(() => window.__reviewedDesktopDraft.reusable_configuration.sources['google-ads-search-terms']), {
+      included: true, task_id: 'google-ads-search-terms-7-days', date_policy: 'TODAY_MINUS_7_TO_YESTERDAY', customer_id: '1234567890',
+    }, 'Returning to rolling must discard explicit fields');
+    console.log('PASS ADS-EXPLICIT-UI-001: inclusive dates, input gating, complete Review and rolling compatibility');
+
 
     await page.reload();
     await page.getByRole('button', { name: 'TASKS', exact: true }).click();
@@ -5558,6 +5610,17 @@ const main = async () => {
     await page.getByLabel('Keyword group 1 ID').fill('KWP-FICUS');
     await page.getByLabel('Keyword group 1 name').fill('Indoor plants');
     await page.getByLabel('Keyword group 1 keywords').fill('ficus, monstera deliciosa');
+    await plannerReviewButton.click();
+    await page.getByRole('heading', { name: 'Review Quick Run', exact: true }).waitFor();
+    const frozenPlannerGroup = await page.evaluate(() =>
+      window.__reviewedDesktopArtifact.resolved_configuration.sources['google-keyword-planner'].groups[0]);
+    assert.equal(frozenPlannerGroup.requested_date_start, '2025-09-01');
+    assert.equal(frozenPlannerGroup.requested_date_end, '2026-08-31');
+    assert.equal(await page.getByRole('heading', { name: 'Exact Dates', exact: true }).count(), 1,
+      'Keyword Planner Review must display dates already frozen in the reviewed group.');
+    assert.equal(await page.getByText('KWP-FICUS: 2025-09-01 → 2026-08-31', { exact: true }).count(), 1,
+      'The displayed range must come from the frozen group, not the current clock.');
+    await page.getByRole('button', { name: 'Back to Task', exact: true }).click();
     await page.getByRole('button', { name: 'Add keyword group', exact: true }).click();
     await page.getByLabel('Keyword group 2 ID').fill('KWP-FICUS');
     await page.getByLabel('Keyword group 2 name').fill('Care topics');
@@ -5580,9 +5643,51 @@ const main = async () => {
     assert.equal(await page.getByText('Keyword groups: 2', { exact: true }).count(), 1);
     assert.equal(await page.getByText('KWP-FICUS: ficus, monstera deliciosa', { exact: true }).count(), 1);
     assert.equal(await page.getByText('KWP-PASA: ficus bakımı, monstera bakımı', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('KWP-FICUS: 2025-09-01 → 2026-08-31', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('KWP-PASA: 2025-09-01 → 2026-08-31', { exact: true }).count(), 1);
+    await page.getByRole('button', { name: 'Back to Task', exact: true }).click();
+    await page.evaluate(() => {
+      window.__keywordPlannerReviewedDates = [
+        { requested_date_start: '2024-09-01', requested_date_end: '2025-08-31' },
+        { requested_date_start: '2025-09-01', requested_date_end: '2026-08-31' },
+      ];
+    });
+    await plannerReviewButton.click();
+    await page.getByRole('heading', { name: 'Review Quick Run', exact: true }).waitFor();
+    assert.equal(await page.getByRole('heading', { name: 'Exact Dates', exact: true }).count(), 1);
+    assert.equal(await page.getByText('KWP-FICUS: 2024-09-01 → 2025-08-31', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('KWP-PASA: 2025-09-01 → 2026-08-31', { exact: true }).count(), 1);
+    assert.equal(await page.getByText(/^Resolved range:/).count(), 0,
+      'Different frozen Keyword Planner group ranges must not be presented as one shared range.');
     await page.getByRole('button', { name: 'Start Run', exact: true }).click();
     assert.deepEqual(await page.evaluate(() => window.__startedDesktopDraft), await page.evaluate(() => window.__reviewedDesktopArtifact), 'Keyword Planner Start must forward the exact reviewed groups.');
     console.log('PASS KEYWORD-PLANNER-REVIEW-UI-001: explicit groups are reviewed and started unchanged');
+    console.log('PASS KEYWORD-PLANNER-DATES-UI-001: single/shared/different frozen group dates display truthfully and Start forwards them unchanged');
+
+    await page.reload();
+    await page.getByRole('button', { name: 'TASKS', exact: true }).click();
+    await page.getByTestId('task-card').filter({ hasText: 'Keyword Planner — Historical Metrics' }).click();
+    await page.getByLabel('Keyword group 1 ID').fill('KWP01');
+    await page.getByLabel('Keyword group 1 name').fill('Indoor plants');
+    await page.getByLabel('Keyword group 1 keywords').fill('salon çiçeği');
+    await page.evaluate(() => { window.__keywordPlannerReviewedDates = [
+      { requested_date_start: '2025-10-01', requested_date_end: '2026-09-30' },
+    ]; });
+    await page.getByRole('button', { name: 'Review Quick Run', exact: true }).click();
+    await page.getByRole('heading', { name: 'Exact Dates', exact: true }).waitFor();
+    assert.equal(await page.locator('dt').filter({ hasText: /^Jobs$/ }).locator('..').locator('dd').innerText(), '1');
+    assert.equal(await page.getByText('Customer: …6003', { exact: true }).count(), 1,
+      'KWP Review must display the masked frozen account');
+    assert.equal(await page.getByText('Dataset: KEYWORD_HISTORICAL_METRICS', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('KWP01: salon çiçeği', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('KWP01 targeting: Turkey (TR) · Turkish (tr) · Google Search (GOOGLE_SEARCH)', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('KWP01: 2025-10-01 → 2026-09-30', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('Keyword groups: 1', { exact: true }).count(), 1);
+    const completeKwp = await page.evaluate(() => window.__reviewedDesktopArtifact);
+    assert.equal(completeKwp.resolved_configuration.sources['google-keyword-planner'].customer_id, '1234566003');
+    assert.equal(completeKwp.resolved_configuration.sources['google-keyword-planner'].groups[0].customer_id, '1234566003');
+    console.log('PASS KWP-COMPLETE-REVIEW: frozen customer, dataset, group, keyword, targeting and dates');
+
 
     await page.reload();
     await page.getByRole('button', { name: 'TASKS', exact: true }).click();

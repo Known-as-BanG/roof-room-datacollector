@@ -1,4 +1,4 @@
-import type { DesktopResolvedDateRange } from '../../../shared/desktop-run-resolution';
+import { resolveDesktopDatePolicy, type DesktopDatePolicy, type DesktopResolvedDateRange } from '../../../shared/desktop-run-resolution';
 import { GOOGLE_ADS_SEARCH_TERMS_SOURCE_ID } from '../../../shared/google-api';
 import type { JsonObject } from '../../../shared/run-job';
 import type { SourceCollectionContext } from '../../../shared/collection';
@@ -51,7 +51,11 @@ export const requireSearchTermsAccountBinding = (selected: unknown, connected: u
   return customerId;
 };
 
-export const createSearchTermsJobContext = (range: DesktopResolvedDateRange, customer_id: unknown): JsonObject => ({
+type SearchTermsDateRange = Omit<DesktopResolvedDateRange, 'date_policy'> & {
+  date_policy: DesktopDatePolicy | 'EXPLICIT';
+};
+
+export const createSearchTermsJobContext = (range: SearchTermsDateRange, customer_id: unknown): JsonObject => ({
   customer_id: requireSearchTermsCustomerId(customer_id),
   task_id: GOOGLE_ADS_SEARCH_TERMS_SOURCE_ID,
   source_id: GOOGLE_ADS_SEARCH_TERMS_SOURCE_ID,
@@ -69,6 +73,31 @@ const requireDate = (value: unknown): string => {
     throw new Error('Ads Search Terms requires valid calendar dates.');
   }
   return value;
+};
+
+export const resolveSearchTermsDateRange = (
+  config: Record<string, unknown>,
+  rollingPolicy: DesktopDatePolicy,
+  referenceDate: string,
+): SearchTermsDateRange => {
+  const mode = config.date_mode === undefined ? 'ROLLING' : config.date_mode;
+  if (mode === 'ROLLING') {
+    if (config.date_policy !== rollingPolicy
+      || config.requested_date_start !== undefined || config.requested_date_end !== undefined) {
+      throw new Error('Rolling Search Terms requires its task policy without explicit dates.');
+    }
+    return resolveDesktopDatePolicy(rollingPolicy, referenceDate);
+  }
+  if (mode !== 'EXPLICIT' || config.date_policy !== undefined) {
+    throw new Error('Search Terms requires rolling mode or explicit dates without a rolling policy.');
+  }
+  const start = requireDate(config.requested_date_start);
+  const end = requireDate(config.requested_date_end);
+  if (start > end) throw new Error('Ads Search Terms date range is reversed.');
+  return {
+    reference_date: requireDate(referenceDate), date_policy: 'EXPLICIT',
+    requested_date_start: start, requested_date_end: end,
+  };
 };
 
 export const buildSearchTermsQuery = (context: SourceCollectionContext): string => {

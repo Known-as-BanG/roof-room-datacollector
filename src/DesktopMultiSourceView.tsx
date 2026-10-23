@@ -197,18 +197,19 @@ const isValidAbsoluteDateRange = (
   return start <= end;
 };
 
-const getReviewedDateSummary = (
+const getReviewedDateSummaries = (
   review: DesktopReview,
 ): {
   referenceDate: string;
   start: string;
   end: string;
-} | null => {
+  groupId?: string;
+}[] => {
   const reviewed =
     review.reviewed_draft;
 
   if (reviewed === null) {
-    return null;
+    return [];
   }
 
   const sources =
@@ -221,7 +222,7 @@ const getReviewedDateSummary = (
     || sources === null
     || Array.isArray(sources)
   ) {
-    return null;
+    return [];
   }
 
   const source =
@@ -234,7 +235,20 @@ const getReviewedDateSummary = (
     || source === null
     || Array.isArray(source)
   ) {
-    return null;
+    return [];
+  }
+
+  if (reviewed.source_id === 'google-keyword-planner') {
+    const groups = (source as JsonObject).groups;
+    if (!Array.isArray(groups)) return [];
+    return groups.flatMap((group) => {
+      if (typeof group !== 'object' || group === null || Array.isArray(group)) return [];
+      const { group_id, requested_date_start, requested_date_end } = group as JsonObject;
+      if (typeof group_id !== 'string' || typeof requested_date_start !== 'string'
+        || typeof requested_date_end !== 'string') return [];
+      return [{ referenceDate: reviewed.reference_date, groupId: group_id,
+        start: requested_date_start, end: requested_date_end }];
+    });
   }
 
   const directStart =
@@ -249,14 +263,14 @@ const getReviewedDateSummary = (
     typeof directStart === 'string'
     && typeof directEnd === 'string'
   ) {
-    return {
+    return [{
       referenceDate:
         reviewed.reference_date,
       start:
         directStart,
       end:
         directEnd,
-    };
+    }];
   }
 
   const ranges =
@@ -267,7 +281,7 @@ const getReviewedDateSummary = (
     !Array.isArray(ranges)
     || ranges.length === 0
   ) {
-    return null;
+    return [];
   }
 
   const first =
@@ -278,7 +292,7 @@ const getReviewedDateSummary = (
     || first === null
     || Array.isArray(first)
   ) {
-    return null;
+    return [];
   }
 
   const range =
@@ -294,15 +308,15 @@ const getReviewedDateSummary = (
     typeof start !== 'string'
     || typeof end !== 'string'
   ) {
-    return null;
+    return [];
   }
 
-  return {
+  return [{
     referenceDate:
       reviewed.reference_date,
     start,
     end,
-  };
+  }];
 };
 
 const getPresetReviewedScopes = (
@@ -365,6 +379,8 @@ const getPresetReviewedScopes = (
       ? null
       : DESKTOP_TASK_CATALOG.find((task) => task.task_id === taskId)?.task_name ?? taskId;
     const details: string[] = [];
+
+    if (sourceId === 'google-ads-search-terms') details.push('Dataset: SEARCH_TERMS');
 
     for (const [field, label] of displayFields) {
       const value = source[field];
@@ -663,9 +679,13 @@ const parseKeywordPlannerGroups = (
   return groups;
 };
 
-const getReviewedKeywordPlannerGroups = (
+const getReviewedKeywordPlannerScope = (
   review: DesktopReview,
-): KeywordPlannerInputGroup[] | null => {
+): {
+  customerId: string;
+  datasetType: string;
+  groups: (KeywordPlannerInputGroup & { country_code: string; language_code: string; keyword_plan_network: string })[];
+} | null => {
   const reviewed =
     review.reviewed_draft;
 
@@ -701,14 +721,14 @@ const getReviewedKeywordPlannerGroups = (
     return null;
   }
 
-  const groups =
-    (source as JsonObject).groups;
+  const { customer_id, dataset_type, groups } = source as JsonObject;
+  if (typeof customer_id !== 'string' || !/^\d+$/u.test(customer_id)
+    || dataset_type !== 'KEYWORD_HISTORICAL_METRICS' || !Array.isArray(groups)) return null;
 
-  if (!Array.isArray(groups)) {
-    return null;
-  }
-
-  return groups.map(
+  return {
+    customerId: customer_id,
+    datasetType: dataset_type,
+    groups: groups.map(
     (group) => {
       if (
         typeof group !== 'object'
@@ -724,7 +744,11 @@ const getReviewedKeywordPlannerGroups = (
         group as JsonObject;
 
       if (
-        typeof value.group_id !== 'string'
+        value.customer_id !== customer_id
+        || typeof value.country_code !== 'string'
+        || typeof value.language_code !== 'string'
+        || typeof value.keyword_plan_network !== 'string'
+        || typeof value.group_id !== 'string'
         || typeof value.group_name !== 'string'
         || !Array.isArray(value.keywords)
         || value.keywords.some(
@@ -743,9 +767,13 @@ const getReviewedKeywordPlannerGroups = (
           value.group_name,
         keywords:
           value.keywords as string[],
+        country_code: value.country_code,
+        language_code: value.language_code,
+        keyword_plan_network: value.keyword_plan_network,
       };
     },
-  );
+    ),
+  };
 };
 
 interface BitkimarkSitemapInput extends JsonObject {
@@ -1139,6 +1167,10 @@ export function DesktopMultiSourceView() {
   const [trendsDateMode, setTrendsDateMode] = useState<'ROLLING' | 'EXPLICIT'>('ROLLING');
   const [trendsStart, setTrendsStart] = useState('');
   const [trendsEnd, setTrendsEnd] = useState('');
+
+  const [adsDateMode, setAdsDateMode] = useState<'ROLLING' | 'EXPLICIT'>('ROLLING');
+  const [adsStart, setAdsStart] = useState('');
+  const [adsEnd, setAdsEnd] = useState('');
 
   const [conversionDateStart, setConversionDateStart] = useState('');
   const [conversionDateEnd, setConversionDateEnd] = useState('');
@@ -1691,6 +1723,9 @@ export function DesktopMultiSourceView() {
 
     setWorkspaceConnectionDrafts({});
     setAdsCustomerId('');
+    setAdsDateMode('ROLLING');
+    setAdsStart('');
+    setAdsEnd('');
     setGscSiteUrl('');
 
     window.roofroom
@@ -2282,6 +2317,11 @@ export function DesktopMultiSourceView() {
     if (task.source_id === 'google-ads-search-terms') {
       if (!/^\d+$/u.test(adsCustomerId)
         || workspaceConnections.find((connection) => connection.source_id === task.source_id)?.customer_id !== adsCustomerId) return null;
+      if (adsDateMode === 'EXPLICIT') {
+        if (!isValidAbsoluteDateRange(adsStart, adsEnd)) return null;
+        return { included: true, task_id: task.task_id, customer_id: adsCustomerId,
+          date_mode: 'EXPLICIT', requested_date_start: adsStart, requested_date_end: adsEnd };
+      }
       return { included: true, task_id: task.task_id, date_policy: task.date_policy ?? null, customer_id: adsCustomerId };
     }
     if (task.source_id === 'google-search-console-query-page') {
@@ -2462,9 +2502,11 @@ export function DesktopMultiSourceView() {
         return;
       }
 
-      if (selectedTask.source_id === 'google-trends'
+      if ((selectedTask.source_id === 'google-trends' || selectedTask.source_id === 'google-ads-search-terms')
         && buildCurrentTaskSourceConfiguration(selectedTask) === null) {
-        setMessage('Select configured query groups and a valid Trends date range before Review.');
+        setMessage(selectedTask.source_id === 'google-trends'
+          ? 'Select configured query groups and a valid Trends date range before Review.'
+          : 'Select a Search Terms account and a valid inclusive date range before Review.');
         return;
       }
 
@@ -4668,7 +4710,7 @@ export function DesktopMultiSourceView() {
                 {selectedTask.source_id === 'google-ads-search-terms' && (
                       <>
                         <p>Scope: SEARCH campaigns · search_term_view</p>
-                        <p>Date policy: 17-day reporting lag through yesterday</p>
+                        <p>Dataset: SEARCH_TERMS</p>
                         <label>
                           Search Terms customer account
                           <select aria-label="Search Terms customer account" value={adsCustomerId}
@@ -4678,6 +4720,26 @@ export function DesktopMultiSourceView() {
                               .map((connection) => <option key={connection.source_id} value={connection.customer_id ?? ''}>{connection.customer_id}</option>)}
                           </select>
                         </label>
+                        <label>
+                          Date window
+                          <select aria-label="Search Terms date mode" value={adsDateMode}
+                            onChange={(event) => { setAdsDateMode(event.target.value as 'ROLLING' | 'EXPLICIT'); setQuickRunReview(null); }}>
+                            <option value="ROLLING">Rolling task window through yesterday</option>
+                            <option value="EXPLICIT">Explicit inclusive dates</option>
+                          </select>
+                        </label>
+                        {adsDateMode === 'EXPLICIT' && (
+                          <>
+                            <label>Requested start (inclusive)
+                              <input type="date" aria-label="Search Terms requested start" value={adsStart}
+                                onChange={(event) => { setAdsStart(event.target.value); setQuickRunReview(null); }} />
+                            </label>
+                            <label>Requested end (inclusive)
+                              <input type="date" aria-label="Search Terms requested end" value={adsEnd}
+                                onChange={(event) => { setAdsEnd(event.target.value); setQuickRunReview(null); }} />
+                            </label>
+                          </>
+                        )}
                       </>
                     )}
 
@@ -5392,6 +5454,17 @@ export function DesktopMultiSourceView() {
                               </code>
                             </div>
                           )
+                        : selectedTask.source_id === 'google-ads-search-terms'
+                          ? (
+                            <div>
+                              {getPresetReviewedScopes(quickRunReview.review).map((scope) => (
+                                <div key={scope.sourceId}>
+                                  {scope.details.map((detail) => <p key={detail}>{detail}</p>)}
+                                </div>
+                              ))}
+                              <p>Requested dates are inclusive.</p>
+                            </div>
+                          )
                         : (
                           <p>
                             Configuration is captured in the reviewed Run draft.
@@ -5443,12 +5516,12 @@ export function DesktopMultiSourceView() {
                 })()}
 
                 {(() => {
-                  const summary =
-                    getReviewedDateSummary(
+                  const summaries =
+                    getReviewedDateSummaries(
                       quickRunReview.review,
                     );
 
-                  return summary === null
+                  return summaries.length === 0
                     ? null
                     : (
                       <section
@@ -5468,21 +5541,16 @@ export function DesktopMultiSourceView() {
                           {
                             [
                               'Reference date: ',
-                              summary.referenceDate,
+                              summaries[0].referenceDate,
                             ].join('')
                           }
                         </p>
 
-                        <p>
-                          {
-                            [
-                              'Resolved range: ',
-                              summary.start,
-                              ' → ',
-                              summary.end,
-                            ].join('')
-                          }
-                        </p>
+                        {summaries.map((summary) => (
+                          <p key={summary.groupId ?? 'shared'}>
+                            {summary.groupId ?? 'Resolved range'}: {summary.start} → {summary.end}
+                          </p>
+                        ))}
                       </section>
                     );
                 })()}
@@ -5546,12 +5614,12 @@ export function DesktopMultiSourceView() {
                 })()}
 
                 {(() => {
-                  const groups =
-                    getReviewedKeywordPlannerGroups(
+                  const scope =
+                    getReviewedKeywordPlannerScope(
                       quickRunReview.review,
                     );
 
-                  return groups === null
+                  return scope === null
                     ? null
                     : (
                       <section
@@ -5567,17 +5635,16 @@ export function DesktopMultiSourceView() {
                           Keyword Planner Groups
                         </h2>
 
-                        <p>
-                          Keyword groups: {groups.length}
-                        </p>
+                        <p>Customer: …{scope.customerId.slice(-4)}</p>
+                        <p>Dataset: {scope.datasetType}</p>
+                        <p>Keyword groups: {scope.groups.length}</p>
 
-                        {groups.map(
+                        {scope.groups.map(
                           (group) => (
-                            <p
-                              key={group.group_id}
-                            >
-                              {group.group_id}: {group.keywords.join(', ')}
-                            </p>
+                            <div key={group.group_id}>
+                              <p>{group.group_id}: {group.keywords.join(', ')}</p>
+                              <p>{group.group_id} targeting: {group.country_code === 'TR' ? 'Turkey (TR)' : group.country_code} · {group.language_code === 'tr' ? 'Turkish (tr)' : group.language_code} · {group.keyword_plan_network === 'GOOGLE_SEARCH' ? 'Google Search (GOOGLE_SEARCH)' : group.keyword_plan_network}</p>
+                            </div>
                           ),
                         )}
                       </section>

@@ -211,3 +211,131 @@ test('account-bound native validation rejects mismatched provider identity and m
   assert.equal((await new GoogleAdsSearchTermsValidator().validate(legacyContext)).validation_status, 'VALID');
   assert.deepEqual(legacyContext.job.source_context, {});
 });
+
+const explicitConfig = {
+  included: true, task_id: 'google-ads-search-terms-7-days', customer_id: '1234567890',
+  date_mode: 'EXPLICIT', requested_date_start: '2026-10-05', requested_date_end: '2026-10-11',
+};
+const explicitContext = {
+  customer_id: '1234567890', task_id: SOURCE, source_id: SOURCE,
+  source_mode: 'search_term_view', campaign_type: 'SEARCH', reference_date: '2026-10-22',
+  date_policy: 'EXPLICIT', requested_date_start: '2026-10-05', requested_date_end: '2026-10-11',
+};
+const explicitFixture = async (t, name) => {
+  const base = path.join(workRoot, name);
+  const directories = Object.fromEntries(['config', 'data', 'database', 'browser_profiles', 'logs', 'public_downloads'].map(key => [key, path.join(base, key)]));
+  directories.app_data_root = base; directories.runs = path.join(directories.data, 'runs');
+  for (const directory of Object.values(directories)) fs.mkdirSync(directory, { recursive: true });
+  assert.equal(initializeDatabase(directories).status, 'READY');
+  const repository = new StateRepository(getDatabasePath(directories)); t.after(() => repository.close());
+  const workspace = repository.createWorkspace({ workspace_name: 'Synthetic explicit Ads acceptance' });
+  repository.upsertSourceConnection({ workspace_id: workspace.workspace_id, source_id: SOURCE, credential_ref: 'fixture', safe_metadata: { customer_id: '123-456-7890' } });
+  let clock = new Date('2026-10-22T12:00:00.000Z');
+  const controller = new DesktopMultiSourceController({ repository, application_version: 'test', now: () => clock,
+    readiness: { getReadiness: async () => ({ readiness_status: 'READY' }) } });
+  const draft = await controller.createDraft({ workspace_id: workspace.workspace_id, origin: { kind: 'BLANK' } });
+  draft.reusable_configuration = { sources: { [SOURCE]: structuredClone(explicitConfig) } };
+  return { repository, controller, workspace, directories, draft, nextDay: () => { clock = new Date('2026-10-23T12:00:00.000Z'); } };
+};
+
+test('explicit inclusive dates survive Review, next-day reservation, database reopen and the mocked provider query', async (t) => {
+  const f = await explicitFixture(t, 'explicit-e2e');
+  const before = structuredClone(f.draft);
+  const review = await f.controller.reviewDraft(f.draft);
+  assert.equal(review.can_start, true); assert.equal(review.job_count, 1);
+  assert.deepEqual(f.draft, before);
+  assert.deepEqual(review.reviewed_draft.resolved_configuration.sources[SOURCE].jobs, [explicitContext]);
+  f.nextDay();
+  const originalReview = structuredClone(review.reviewed_draft);
+  const state = await f.controller.startDraft(review.reviewed_draft);
+  assert.deepEqual(review.reviewed_draft, originalReview);
+  assert.deepEqual(state.jobs.map(job => job.source_context), [explicitContext]);
+  assert.equal(state.run.configuration_snapshot.date_policy, 'EXPLICIT');
+  const reopened = new StateRepository(getDatabasePath(f.directories)); t.after(() => reopened.close());
+  assert.deepEqual(reopened.listJobs(state.run.run_id)[0].source_context, explicitContext);
+  const requests = [];
+  const originalFetch = globalThis.fetch;
+  t.after(() => { globalThis.fetch = originalFetch; });
+  globalThis.fetch = async (url, options) => {
+    if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'fixture-access', expires_in: 3600 });
+    assert.equal(url, 'https://googleads.googleapis.com/v25/customers/1234567890/googleAds:searchStream');
+    requests.push({ url, body: JSON.parse(options.body) });
+    return Response.json([{ results: [{
+      customer: { id: '1234567890', timeZone: 'Europe/Istanbul' },
+      searchTermView: { searchTerm: 'synthetic', status: 'NONE' },
+      campaign: { id: '1', name: 'Synthetic Search', advertisingChannelType: 'SEARCH' },
+      adGroup: { id: '2', name: 'Synthetic Group' },
+      segments: { keyword: { adGroupCriterion: 'customers/1234567890/adGroupCriteria/2~3', info: { text: 'synthetic', matchType: 'PHRASE' } }, searchTermMatchType: 'NEAR_PHRASE', date: '2026-10-05' },
+      metrics: { impressions: '2', clicks: '1' },
+    }] }]);
+  };
+  const runtime = createProductionCollectionRuntime({ repository: f.repository, directories: f.directories,
+    credentialStore: credentials, googleTrendsSource: { id: 'google-trends' } });
+  await runtime.orchestrator.runUntilBlocked(state.run.run_id);
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].body.query, /FROM search_term_view WHERE campaign\.advertising_channel_type = 'SEARCH' AND segments\.date BETWEEN '2026-10-05' AND '2026-10-11'$/);
+  const job = reopened.listJobs(state.run.run_id)[0];
+  assert.equal(job.execution_status, 'COMPLETED'); assert.equal(job.validation_status, 'VALID');
+  assert.deepEqual(job.source_context, explicitContext);
+  assert.equal(job.attempt_count, 1);
+  const artifact = reopened.getArtifact(job.accepted_artifact_id);
+  assert.equal(artifact.attempt_number, 1);
+  const { StorageManager } = load('main/storage/storage-manager.js');
+  const raw = fs.readFileSync(new StorageManager(f.directories).resolveRunRelativePath(state.run.run_id, artifact.relative_path));
+  assert.equal(require('node:crypto').createHash('sha256').update(raw).digest('hex'), artifact.sha256);
+  for (const field of ['country_code', 'country_filter', 'language_code', 'device', 'network', 'keyword_plan_network']) assert.equal(Object.hasOwn(state.jobs[0].source_context, field), false);
+});
+
+test('explicit and mixed invalid date inputs fail closed without rolling substitution or reservation', async (t) => {
+  const f = await explicitFixture(t, 'explicit-invalid');
+  for (const patch of [
+    { requested_date_start: undefined }, { requested_date_end: undefined },
+    { requested_date_start: '2026-02-30' }, { requested_date_end: 'not-a-date' },
+    { requested_date_start: '2026-10-12' }, { requested_date_end: null },
+    { date_mode: 'UNKNOWN' }, { date_mode: null }, { date_policy: 'TODAY_MINUS_7_TO_YESTERDAY' },
+    { date_mode: 'ROLLING', date_policy: 'TODAY_MINUS_7_TO_YESTERDAY' },
+    { date_mode: undefined, date_policy: 'TODAY_MINUS_7_TO_YESTERDAY' },
+  ]) {
+    const invalid = structuredClone(f.draft);
+    Object.assign(invalid.reusable_configuration.sources[SOURCE], patch);
+    const review = await f.controller.reviewDraft(invalid);
+    assert.equal(review.can_start, false, JSON.stringify(patch));
+    await assert.rejects(f.controller.startDraft(invalid), /cannot start|ready|date|scope/i);
+    assert.equal(f.repository.listRuns(f.workspace.workspace_id).length, 0);
+  }
+  const sameDay = structuredClone(f.draft);
+  sameDay.reusable_configuration.sources[SOURCE].requested_date_end = '2026-10-05';
+  const review = await f.controller.reviewDraft(sameDay);
+  assert.equal(review.can_start, true);
+  assert.equal(review.reviewed_draft.resolved_configuration.sources[SOURCE].jobs[0].requested_date_end, '2026-10-05');
+});
+
+test('legacy rolling task windows remain exact and explicit mode cannot mutate reviewed scope before reservation', async (t) => {
+  const f = await explicitFixture(t, 'explicit-integrity');
+  for (const task of DESKTOP_TASK_CATALOG.filter(task => task.source_id === SOURCE)) {
+    const rolling = structuredClone(f.draft);
+    rolling.reusable_configuration.sources[SOURCE] = { included: true, task_id: task.task_id, date_policy: task.date_policy, customer_id: '1234567890' };
+    const review = await f.controller.reviewDraft(rolling);
+    assert.equal(review.can_start, true);
+    const range = resolveDesktopDatePolicy(task.date_policy, '2026-10-22');
+    assert.deepEqual(review.reviewed_draft.resolved_configuration.sources[SOURCE].jobs[0], {
+      ...explicitContext, ...range,
+    });
+  }
+  const review = await f.controller.reviewDraft(f.draft);
+  const mutate = [
+    r => { r.resolved_configuration.sources[SOURCE].requested_date_start = '2026-10-06'; },
+    r => { r.resolved_configuration.sources[SOURCE].jobs[0].requested_date_end = '2026-10-12'; },
+    r => { r.reusable_configuration.sources[SOURCE].requested_date_end = '2026-10-12'; },
+    r => { r.resolved_configuration.sources[SOURCE].jobs.push(structuredClone(explicitContext)); },
+    r => { r.resolved_configuration.sources[SOURCE].jobs[0].campaign_type = 'PERFORMANCE_MAX'; },
+    r => { r.resolved_configuration.sources[SOURCE].jobs[0].source_mode = 'other_resource'; },
+    r => { r.resolved_configuration.sources[SOURCE].date_policy = 'TODAY_MINUS_7_TO_YESTERDAY'; },
+    r => { r.reference_date = '2026-10-12'; },
+  ];
+  for (const change of mutate) {
+    const modified = structuredClone(review.reviewed_draft); change(modified);
+    await assert.rejects(f.controller.startDraft(modified), /scope|date|changed|invalid/i);
+    assert.equal(f.repository.listRuns(f.workspace.workspace_id).length, 0);
+  }
+});

@@ -206,20 +206,20 @@ test('KEYWORD-PLANNER-REVIEW-BOUND-001: Review persists exact groups and product
   assert.equal(review.can_start, true);
   assert.equal(review.job_count, 2);
   assert.ok(review.reviewed_draft, 'Keyword Planner Review must return a locked group artifact.');
-  assert.deepEqual(review.reviewed_draft.resolved_configuration.sources[SOURCE].groups, groups.map(expectedContext));
+  assert.deepEqual(review.reviewed_draft.resolved_configuration.sources[SOURCE].groups, groups.map((group) => ({ ...expectedContext(group), customer_id: '1234567890' })));
   const reviewed = structuredClone(review.reviewed_draft);
 
   clock = new Date('2026-09-19T09:30:00.000Z');
   const started = await controller.startDraft(review.reviewed_draft);
   assert.deepEqual(review.reviewed_draft, reviewed, 'Start must not mutate or rebuild reviewed groups.');
-  assert.deepEqual(started.jobs.map((job) => job.source_context), groups.map(expectedContext));
+  assert.deepEqual(started.jobs.map((job) => job.source_context), groups.map((group) => ({ ...expectedContext(group), customer_id: '1234567890' })));
   assert.equal(started.run.configuration_snapshot.reference_date, '2026-09-18');
   assert.equal(started.run.configuration_snapshot.requested_date_start, null);
   assert.equal(started.run.configuration_snapshot.requested_date_end, null);
 
   repository.close();
   repository = new StateRepository(getDatabasePath(directories));
-  assert.deepEqual(repository.listJobs(started.run.run_id).map((job) => job.source_context), groups.map(expectedContext));
+  assert.deepEqual(repository.listJobs(started.run.run_id).map((job) => job.source_context), groups.map((group) => ({ ...expectedContext(group), customer_id: '1234567890' })));
 
   const providerRequests = [];
   const originalFetch = globalThis.fetch;

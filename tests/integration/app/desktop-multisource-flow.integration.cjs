@@ -138,6 +138,95 @@ const createFixture = (
 };
 
 async function main() {
+  // KWP account identity must use its own canonical Workspace connection.
+  {
+    const source = 'google-keyword-planner';
+    const customer = '1234566003';
+    const connection = { workspace_id: 'ws_a', source_id: source,
+      credential_ref: 'kwp-fixture', safe_metadata: { customer_id: '123-456-6003' } };
+    const connections = [connection, { workspace_id: 'ws_a', source_id: 'google-ads-search-terms',
+      credential_ref: 'other-ads', safe_metadata: { customer_id: '9999999999' } }];
+    let clock = new Date('2026-10-21T09:30:00.000Z');
+    const { controller, reservations, executions } = createFixture(
+      () => clock, [source], connections,
+      new Set(['kwp-fixture']), true,
+    );
+    const draft = { workspace_id: 'ws_a', origin: { kind: 'BLANK' }, source_cards: [],
+      reusable_configuration: { sources: { [source]: { included: true,
+        task_id: 'keyword-planner-historical-metrics', groups: [
+          { group_id: 'KWP01', group_name: 'Indoor plants', keywords: ['salon çiçeği'] },
+        ] } } } };
+    const original = structuredClone(draft);
+    const review = await controller.reviewDraft(draft);
+    assert.equal(review.can_start, true);
+    assert.equal(review.job_count, 1);
+    const frozen = review.reviewed_draft.resolved_configuration.sources[source];
+    assert.equal(frozen.customer_id, customer, 'Review must freeze the canonical KWP customer, not another Ads account');
+    assert.equal(frozen.dataset_type, 'KEYWORD_HISTORICAL_METRICS');
+    assert.equal(frozen.groups[0].customer_id, customer);
+    assert.equal(frozen.groups[0].requested_date_start, '2025-10-01');
+    assert.equal(frozen.groups[0].requested_date_end, '2026-09-30');
+    assert.deepEqual(draft, original, 'Review must preserve reusable input');
+    for (const mutate of [
+      (s) => { delete s.customer_id; },
+      (s) => { s.customer_id = '9999999999'; },
+      (s) => { delete s.groups[0].customer_id; },
+      (s) => { s.groups[0].customer_id = '9999999999'; },
+      (s) => { s.groups[0].keywords = ['another keyword']; },
+      (s) => { s.groups[0].group_id = 'OTHER'; },
+      (s) => { s.dataset_type = 'KEYWORD_IDEAS'; },
+      (s) => { s.groups[0].requested_date_start = '2024-10-01'; },
+      (s) => { s.groups[0].keyword_plan_network = 'GOOGLE_SEARCH_AND_PARTNERS'; },
+    ]) {
+      const tampered = structuredClone(review.reviewed_draft);
+      mutate(tampered.resolved_configuration.sources[source]);
+      await assert.rejects(() => controller.startDraft(tampered), /Keyword Planner.*(account|scope|invalid|changed)/i);
+      assert.equal(reservations.length, 0, 'Tampering must fail before reservation');
+      assert.equal(executions.length, 0, 'Tampering must fail before execution');
+    }
+    for (const bad of [undefined, '', 'not-an-id', '9999999999']) {
+      connection.safe_metadata.customer_id = bad;
+      await assert.rejects(() => controller.startDraft(review.reviewed_draft), /Keyword Planner.*(account|scope|invalid|changed)/i);
+      assert.equal(reservations.length, 0, 'Account drift/removal must fail before reservation');
+    }
+    connection.safe_metadata.customer_id = '123-456-6003';
+    connection.credential_ref = null;
+    await assert.rejects(() => controller.startDraft(review.reviewed_draft), /Keyword Planner.*(account|scope|invalid|changed)/i);
+    connection.credential_ref = 'kwp-fixture';
+    for (const mutate of [
+      (d) => { d.reusable_configuration.sources[source].customer_id = '9999999999'; },
+      (d) => { d.reusable_configuration.sources[source].groups[0].customer_id = '9999999999'; },
+    ]) {
+      const bad = structuredClone(draft); mutate(bad);
+      const blocked = await controller.reviewDraft(bad);
+      assert.equal(blocked.can_start, false, 'Conflicting caller customer must block Review');
+      await assert.rejects(() => controller.startDraft(bad));
+      assert.equal(reservations.length, 0);
+    }
+    for (const records of [[], [connections[1]], [{ ...connection, workspace_id: 'ws_b' }],
+      [{ ...connection, safe_metadata: {} }], [{ ...connection, credential_ref: null }]]) {
+      const missing = createFixture(undefined, [source], records, new Set(['kwp-fixture']), true);
+      assert.equal((await missing.controller.reviewDraft(draft)).can_start, false,
+        'Missing/foreign canonical KWP identity must not fall back to another source');
+      await assert.rejects(() => missing.controller.startDraft(draft));
+      assert.equal(missing.reservations.length, 0);
+    }
+    controller.setReadinessEvaluator(async (workspace_id, source_id) => {
+      connection.safe_metadata.customer_id = '9999999999';
+      return READY(workspace_id, source_id);
+    });
+    await assert.rejects(() => controller.startDraft(review.reviewed_draft), /Keyword Planner.*(account|scope|changed)/i);
+    assert.equal(reservations.length, 0, 'Account changes during asynchronous readiness must fail before reservation');
+    assert.equal(executions.length, 0);
+    connection.safe_metadata.customer_id = '123-456-6003';
+    controller.setReadinessEvaluator(async (workspace_id, source_id) => READY(workspace_id, source_id));
+    clock = new Date('2026-11-01T09:30:00.000Z');
+    await controller.startDraft(review.reviewed_draft);
+    assert.equal(reservations.length, 1);
+    assert.equal(reservations[0].job_plans[0].source_context.customer_id, customer);
+    assert.deepEqual(reservations[0].job_plans[0].source_context, frozen.groups[0]);
+    console.log('PASS KWP-CUSTOMER-BINDING: canonical account, frozen Jobs, drift and tamper rejection before reservation');
+  }
   // P2-02: a separate task freezes three v3 Jobs from the Workspace Ads account.
   {
     const adsConnections = [{ workspace_id: 'ws_a', source_id: 'google-ads-search-reporting',
@@ -405,8 +494,11 @@ async function main() {
     } = createFixture(
       undefined,
       ['google-keyword-planner', 'bitkimark-sitemap', 'serpapi'],
-      [],
-      new Set(),
+      [{ workspace_id: 'ws_a', source_id: 'google-keyword-planner', credential_ref: 'kwp-fixture',
+        safe_metadata: { customer_id: '123-456-6003' } },
+      { workspace_id: 'ws_a', source_id: 'google-ads-search-terms', credential_ref: 'other-ads',
+        safe_metadata: { customer_id: '9999999999' } }],
+      new Set(['kwp-fixture']),
       true,
     );
 
@@ -521,6 +613,7 @@ async function main() {
     );
 
     assert.equal(kwpPlans.length, 1);
+    assert.equal(kwpPlans[0].source_context.customer_id, '1234566003', 'Multi-source planning must preserve the canonical KWP account');
     assert.equal(kwpPlans[0].job_key, 'garden-basics');
     assert.equal(kwpPlans[0].source_context.group_id, 'garden-basics');
     assert.deepEqual(

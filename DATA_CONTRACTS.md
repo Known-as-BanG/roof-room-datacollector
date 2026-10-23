@@ -505,6 +505,19 @@ and retains its existing changed-connection guard. Historical Jobs are unchanged
 Existing 7/14/17/30-day desktop date policies are unchanged; only exact last-30-day
 account-calendar evidence can satisfy the independent Blog publication check.
 
+Legacy `google-ads-search-terms` tasks also support an explicit inclusive range:
+reusable input supplies `date_mode: EXPLICIT`, `requested_date_start` and
+`requested_date_end`, without a rolling `date_policy`. Missing mode preserves the
+existing rolling task policy. Invalid calendar dates, reversed ranges, unknown
+modes and mixed explicit/rolling input fail closed without date substitution.
+Resolved explicit source/Job context and the Run snapshot use `date_policy:
+EXPLICIT`; the reference date remains the actual Review date. Review displays the
+selected account, SEARCH_TERMS dataset, SEARCH campaign type, search_term_view
+resource and absolute inclusive endpoints before Start. Managed reviewed scope is
+rederived at its original Review timestamp and checked before reservation, together
+with current Workspace account binding. No geography, language, device or network
+filter is inferred, and no Core Run/Job/Attempt or provider retry policy changes.
+
 `publication_time_context` keeps requested account/endpoints marked
 `FROZEN_JOB_CONTEXT`, provider customer IDs, original timezone names and actual
 performance dates separately. Its canonical `time_zone` and expected `start_date`

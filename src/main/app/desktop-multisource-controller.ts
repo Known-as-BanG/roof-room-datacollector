@@ -39,7 +39,7 @@ import { ResumePlanner } from '../core/resume-planner';
 import { ReconciliationCoordinator } from '../core/reconciliation-coordinator';
 import { RetryPolicy } from '../core/retry-policy';
 import { RunManager } from '../core/run-manager';
-import { createSearchTermsJobContext, requireSearchTermsCustomerId, requireSearchTermsAccountBinding } from '../sources/google-ads/search-terms-request';
+import { createSearchTermsJobContext, requireSearchTermsCustomerId, requireSearchTermsAccountBinding, resolveSearchTermsDateRange } from '../sources/google-ads/search-terms-request';
 import {
   createGoogleAdsReportingJobContext,
   googleAdsReportingContextAsJson,
@@ -434,7 +434,8 @@ const productionPlanner = (sourceId: string, config: Record<string, unknown>): J
     }
   }
   if (sourceId === 'google-keyword-planner') {
-    if (!Array.isArray(config.groups)) {
+    if (!Array.isArray(config.groups) || typeof config.customer_id !== 'string'
+      || !/^\d+$/u.test(config.customer_id) || config.dataset_type !== 'KEYWORD_HISTORICAL_METRICS') {
       return [];
     }
 
@@ -449,13 +450,10 @@ const productionPlanner = (sourceId: string, config: Record<string, unknown>): J
                 ),
               );
 
-            return typeof config.customer_id === 'string'
-              ? {
-                  ...context,
-                  customer_id:
-                    config.customer_id,
-                }
-              : context;
+            if (context.customer_id !== config.customer_id) {
+              throw new Error('Keyword Planner Job account does not match the reviewed source.');
+            }
+            return context;
           },
         );
 
@@ -1179,6 +1177,9 @@ export class DesktopMultiSourceController {
           plannedSourceIds.has(
             sourceId,
           ) === false
+          || (sourceId === 'google-ads-search-terms' && includedSources.length === 1
+            && typeof sourceConfig(draft.reusable_configuration, sourceId).task_id === 'string'
+            && reviewedDraft === null)
           || (sourceId === 'google-ads-search-reporting'
             && includedSources.length > 1
             && sourceConfig(draft.reusable_configuration, sourceId).task_id
@@ -1279,6 +1280,10 @@ export class DesktopMultiSourceController {
 
     const review = await this.reviewDraft(draft);
     if (!review.can_start) throw new Error(`Run cannot start; included sources are not ready: ${review.blocking_sources.join(', ') || 'no source selected'}.`);
+    if (review.included_sources.includes('google-keyword-planner')) {
+      if (review.reviewed_draft === null) throw new Error('Keyword Planner requires a valid reviewed account and scope.');
+      return this.startReviewedDraft(review.reviewed_draft);
+    }
 
     const executionConfiguration =
       this.resolveMultiSourceExecutionConfiguration(
@@ -1467,6 +1472,44 @@ export class DesktopMultiSourceController {
           (card) =>
             card.source_id,
         );
+
+    const kwpSourceId = 'google-keyword-planner';
+    if (included(reviewedDraft.resolved_configuration, kwpSourceId)
+      || included(reviewedDraft.reusable_configuration, kwpSourceId)
+      || reviewedDraft.task_id === KEYWORD_PLANNER_TASK_ID) {
+      const expected = this.resolveReviewedDraft({
+        workspace_id: reviewedDraft.workspace_id,
+        origin: { kind: 'BLANK' },
+        source_cards: [],
+        reusable_configuration: { sources: {
+          [kwpSourceId]: asJsonObjectValue(asJsonObjectValue(reviewedDraft.reusable_configuration.sources)[kwpSourceId]),
+        } },
+      }, new Date(reviewedDraft.resolved_at));
+      if (expected === null || !reviewedDraft.included_sources.includes(kwpSourceId)
+        || !isDeepStrictEqual(sourceConfig(expected.resolved_configuration, kwpSourceId),
+          sourceConfig(reviewedDraft.resolved_configuration, kwpSourceId))) {
+        throw new Error('Reviewed Keyword Planner account or scope changed or is invalid; Review again before Start.');
+      }
+    }
+
+    const adsSourceId = 'google-ads-search-terms';
+    const reusableAds = asJsonObjectValue(asJsonObjectValue(reviewedDraft.reusable_configuration.sources)[adsSourceId]);
+    const resolvedAds = sourceConfig(reviewedDraft.resolved_configuration, adsSourceId);
+    if (included(reviewedDraft.resolved_configuration, adsSourceId)
+      && (typeof reusableAds.task_id === 'string' || typeof resolvedAds.task_id === 'string'
+        || reviewedDraft.source_id === adsSourceId && reviewedDraft.task_id !== null)) {
+      const expected = this.resolveReviewedDraft({
+        workspace_id: reviewedDraft.workspace_id, origin: { kind: 'BLANK' }, source_cards: [],
+        reusable_configuration: { sources: { [adsSourceId]: reusableAds } },
+      }, new Date(reviewedDraft.resolved_at));
+      const singleSource = reviewedDraft.included_sources.length === 1;
+      if (expected === null
+        || !isDeepStrictEqual(sourceConfig(expected.resolved_configuration, adsSourceId), resolvedAds)
+        || singleSource && (reviewedDraft.source_id !== adsSourceId
+          || reviewedDraft.task_id !== expected.task_id || reviewedDraft.reference_date !== expected.reference_date)) {
+        throw new Error('Reviewed Search Terms account or scope changed or is invalid; Review again before Start.');
+      }
+    }
 
     const plans =
       this.buildPlans(
@@ -1670,7 +1713,9 @@ export class DesktopMultiSourceController {
         resolved_at:
           reviewedDraft.resolved_at,
         date_policy:
-          typeof reusableSource
+          reviewedDraft.source_id === 'google-ads-search-terms' && resolvedSource.date_policy === 'EXPLICIT'
+            ? 'EXPLICIT'
+            : typeof reusableSource
             .date_policy === 'string'
             ? reusableSource.date_policy
             : null,
@@ -2429,6 +2474,14 @@ export class DesktopMultiSourceController {
           ),
       );
 
+    if (includedSourceIds.length === 1 && includedSourceIds[0] === 'google-keyword-planner') {
+      const reviewed = this.resolveReviewedDraft(draft, resolvedAt);
+      if (reviewed !== null) return reviewed.resolved_configuration;
+      const sources = asJsonObjectValue(reusableConfiguration.sources);
+      sources['google-keyword-planner'] = { ...sourceConfig(reusableConfiguration, 'google-keyword-planner'), groups: [] };
+      return { ...reusableConfiguration, sources };
+    }
+
     if (includedSourceIds.length <= 1) {
       const trends = sourceConfig(reusableConfiguration, 'google-trends');
       if (includedSourceIds[0] === 'google-trends'
@@ -2470,7 +2523,6 @@ export class DesktopMultiSourceController {
         sourceId === 'google-ads-search-reporting'
         || sourceId === 'google-ads-change-history'
         || sourceId === 'google-ads-configuration'
-        || sourceId === 'google-keyword-planner'
       ) {
         const adsConnection =
           this.dependencies.repository
@@ -2606,6 +2658,9 @@ export class DesktopMultiSourceController {
         );
 
       if (reviewedSource === null) {
+        if (sourceId === 'google-keyword-planner') {
+          resolvedSources[sourceId] = { ...sourceConfiguration, groups: [] };
+        }
         if (sourceId === 'google-trends' && sourceConfiguration.task_id === 'google-trends-interest-over-time') {
           resolvedSources[sourceId] = { ...sourceConfiguration, query_groups: [] };
         }
@@ -2629,6 +2684,17 @@ export class DesktopMultiSourceController {
       resolvedSources;
 
     return resolvedConfiguration;
+  }
+
+  private getKeywordPlannerCustomerId(workspaceId: string): string | null {
+    const connections = this.dependencies.repository.listSourceConnections(workspaceId)
+      .filter((connection) => connection.workspace_id === workspaceId
+        && connection.source_id === 'google-keyword-planner');
+    if (connections.length !== 1 || !connections[0].credential_ref) return null;
+    const value = asObject(connections[0].safe_metadata).customer_id;
+    if (typeof value !== 'string') return null;
+    const customerId = value.replace(/-/gu, '');
+    return /^\d+$/u.test(customerId) ? customerId : null;
   }
 
   private resolveReviewedDraft(
@@ -2730,15 +2796,13 @@ export class DesktopMultiSourceController {
       if (
         taskId === null
         || expectedDatePolicy === null
-        || config.date_policy !== expectedDatePolicy
       ) {
         return null;
       }
 
-      const range = resolveDesktopDatePolicy(
-        expectedDatePolicy,
-        formatLocalReferenceDate(resolvedAt),
-      );
+      let range;
+      try { range = resolveSearchTermsDateRange(config, expectedDatePolicy, formatLocalReferenceDate(resolvedAt)); }
+      catch { return null; }
       const reusableConfiguration = cloneConfiguration(draft.reusable_configuration);
       const resolvedConfiguration = cloneConfiguration(draft.reusable_configuration);
       const sources = asJsonObjectValue(resolvedConfiguration.sources);
@@ -3107,6 +3171,9 @@ export class DesktopMultiSourceController {
       }
 
 
+      const customerId = this.getKeywordPlannerCustomerId(draft.workspace_id);
+      if (customerId === null || (config.customer_id !== undefined && config.customer_id !== customerId)) return null;
+
       const keywordPlannerScope =
         resolveKeywordPlannerHistoricalScope(
           resolvedAt,
@@ -3122,8 +3189,12 @@ export class DesktopMultiSourceController {
               const value =
                 asObject(group);
 
+              if (value.customer_id !== undefined && value.customer_id !== customerId) {
+                throw new Error('Keyword Planner group account conflicts with the Workspace connection.');
+              }
               return keywordPlannerContextAsJson(
                 createKeywordPlannerJobContext({
+                  customer_id: customerId,
                   task_id:
                     KEYWORD_PLANNER_TASK_ID,
                   source_id:
@@ -3176,6 +3247,8 @@ export class DesktopMultiSourceController {
         ...asJsonObjectValue(
           sources[sourceId],
         ),
+        customer_id: customerId,
+        dataset_type: 'KEYWORD_HISTORICAL_METRICS',
         groups:
           resolvedGroups,
       };
